@@ -4,6 +4,7 @@ import { useMotionStore, selectors } from '../../store/useMotionStore';
 import { trackEvent, MotionEvents } from '../../analytics/events';
 import { useMotionExecutionFacade } from '../../facades/useMotionExecutionFacade';
 import { WorkoutConfirmationState, WorkoutEnrichmentInput } from '../../contracts/types';
+import { useMotionSignalFacade } from '../../facades/useMotionSignalFacade';
 import { TouchableOpacity } from 'react-native';
 import { MotionSectionHeader, MotionSectionCard, MotionMetaRow, MotionStatusPill } from '../components/MotionUI';
 
@@ -16,6 +17,7 @@ export const MotionHome: React.FC = () => {
   const isHistory = useMotionStore(selectors.selectIsHistory);
   const isDemo = useMotionStore(selectors.selectIsDemo);
   const exec = useMotionExecutionFacade();
+  const signalFacade = useMotionSignalFacade();
   
   const [localSyncState, setLocalSyncState] = React.useState<'idle' | 'syncing' | 'synced' | 'failed' | 'blocked_demo' | 'blocked_history'>('idle');
   const [enrichmentInput, setEnrichmentInput] = React.useState<WorkoutEnrichmentInput>({});
@@ -66,6 +68,12 @@ export const MotionHome: React.FC = () => {
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <MotionSectionHeader title="Visão Geral" subtitle="Enquadramento central da mini-app." />
+      <View style={{ marginBottom: 16 }}>
+        <MotionStatusPill 
+          label={signalFacade.getUIStatusMessage().label} 
+          tone={signalFacade.getUIStatusMessage().mode === 'available' ? 'primary' : 'passive'} 
+        />
+      </View>
 
       {exec.pendingEnrichmentTarget?.source === 'passive_inference' && (
         <View style={styles.enrichmentBox}>
@@ -124,6 +132,11 @@ export const MotionHome: React.FC = () => {
             <View style={styles.inferredPulseDot} />
             <Text style={styles.inferredTitle}>Nova Atividade Detetada</Text>
           </View>
+          {exec.inferredWorkout.evidenceSource && (
+            <View style={{ marginBottom: 12 }}>
+              <MotionStatusPill label={signalFacade.translateEvidenceSource(exec.inferredWorkout.evidenceSource)} tone={exec.inferredWorkout.evidenceSource === 'real_signal' || exec.inferredWorkout.evidenceSource === 'hybrid' ? 'success' : 'passive'} />
+            </View>
+          )}
           <Text style={styles.inferredSubtitle}>
             {exec.inferredWorkout.reasonSummary || 'Detetámos comportamentos elegíveis. Confirmas o fecho de um novo treino?'}
           </Text>

@@ -3,12 +3,14 @@ import {
   PendingWorkoutConfirmation,
   InferenceSignal,
   InferenceContext,
-  InferenceDecision
+  InferenceDecision,
+  MotionSignalEvidence,
+  MotionInferenceEvidenceSource
 } from '../contracts/types';
 import { trackEvent, MotionEvents } from '../analytics/events';
 
 export const workoutInferenceService = {
-  evaluateSignals: (signals: InferenceSignal[], context: InferenceContext): InferenceDecision => {
+  evaluateSignals: (signals: InferenceSignal[], context: InferenceContext, evidence?: MotionSignalEvidence): InferenceDecision => {
     trackEvent('motion_inference_signal_evaluated', { count: signals.length });
 
     // Anti-Spam / Cooldown Crítico
@@ -52,17 +54,24 @@ export const workoutInferenceService = {
         ? 'Deteção consolidada de comportamentos consistentes com treino intenso.'
         : 'Padrão moderado compatível com atividade física isolada.';
 
-      trackEvent('motion_inference_decision_made', { state, confidence: finalConfidence });
+      let evidenceSource: MotionInferenceEvidenceSource = 'legacy_heuristic';
+      if (evidence) {
+        if (evidence.confidence > 0.6) evidenceSource = 'real_signal';
+        else if (evidence.confidence > 0.2) evidenceSource = 'hybrid';
+      }
+
+      trackEvent('motion_inference_decision_made', { state, confidence: finalConfidence, source: evidenceSource });
       
       return {
         state,
         aggregateConfidence: finalConfidence,
         reasonSummary,
-        supportingSignals: signals
+        supportingSignals: signals,
+        evidenceSource
       };
     }
 
-    return { state: 'none', aggregateConfidence: 0, reasonSummary: 'Sinal insuficiente' };
+    return { state: 'none', aggregateConfidence: 0, reasonSummary: 'Sinal insuficiente', evidenceSource: 'legacy_heuristic' };
   },
 
   createPendingWorkout: (decision: InferenceDecision): PendingWorkoutConfirmation | null => {
@@ -79,7 +88,8 @@ export const workoutInferenceService = {
       endedAt: new Date().toISOString(),
       reasonSummary: decision.reasonSummary,
       supportingSignalsCount: decision.supportingSignals?.length || 0,
-      inferenceVersion: '2.1'
+      inferenceVersion: '3.1',
+      evidenceSource: decision.evidenceSource
     };
   }
 };

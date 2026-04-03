@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { useMotionStore, selectors, storeActions } from '../store/useMotionStore';
 import { resolveBlockPlacement } from '../resolvers/exercisePlacementResolver';
 import { workoutContributionMapper } from '../services/workoutContributionMapper';
-import { writebackService } from '../services/writebackService';
+import { motionHostWritebackAdapter } from '../integration/motionHostWritebackAdapter';
 import { ExecutionMode, WorkoutConfirmationState, WorkoutOutcome, PendingWorkoutConfirmation, WorkoutEnrichmentInput, ConfirmedWorkoutRecord } from '../contracts/types';
 import { workoutInferenceService } from '../services/workoutInferenceService';
+import { motionRetryQueueService } from '../services/motionRetryQueueService';
+import { motionHostFeedbackService } from '../services/motionHostFeedbackService';
 import { trackEvent, MotionEvents } from '../analytics/events';
 
 export interface PendingEnrichmentTarget {
@@ -183,7 +185,7 @@ export const useMotionExecutionFacade = () => {
     };
 
     const contribution = workoutContributionMapper(workoutToProcess.id, state, outcome);
-    const result = await writebackService.attemptWriteback(contribution, isDemo, isHistory, hasWritePermission);
+    const result = await motionHostWritebackAdapter.attemptWriteback(contribution, isDemo, isHistory, hasWritePermission);
 
     if (result.success) {
       trackEvent(MotionEvents.WRITEBACK_SENT);
@@ -204,12 +206,17 @@ export const useMotionExecutionFacade = () => {
         wellnessFeedback: result.success && result.feedback ? result.feedback : {
           receivedAt: new Date().toISOString(),
           source: 'local_projection',
-          feedbackState: 'local_only',
+          feedbackState: 'projected',
           domainsTouched: ['activity', 'consistency'],
           consistencySignal: 'Sinal assimilado paramatricamente'
         }
       };
       storeActions.addOrUpdateWorkoutRecord(newRecord);
+
+      // Despoleta reconciliação pendente do host
+      if (!isDemo && !isHistory) {
+         motionHostFeedbackService.attemptFeedbackReconciliation(workoutToProcess.id);
+      }
 
       // Ativa o prompt opcional de enriquecimento
       setPendingEnrichmentTarget({ executionId: workoutToProcess.id, source: 'passive_inference' });
@@ -226,6 +233,11 @@ export const useMotionExecutionFacade = () => {
         enrichmentStatus: 'not_requested'
       };
       storeActions.addOrUpdateWorkoutRecord(newRecord);
+
+      // Adiciona V3.2 Retry Queue (Só se for falha estrutural, demo não precisa/não tem host real)
+      if (!isDemo && !isHistory) {
+        motionRetryQueueService.enqueueFailedContribution(workoutToProcess.id, contribution, 'post_confirm', result.reason);
+      }
     }
 
     return result;
@@ -260,7 +272,7 @@ export const useMotionExecutionFacade = () => {
     
     // mapper generates MotionContribution
     const contribution = workoutContributionMapper(sessionId, state, outcome);
-    const result = await writebackService.attemptWriteback(contribution, isDemo, isHistory, hasWritePermission);
+    const result = await motionHostWritebackAdapter.attemptWriteback(contribution, isDemo, isHistory, hasWritePermission);
 
     if (result.success) {
       trackEvent(MotionEvents.WRITEBACK_SENT);
@@ -282,12 +294,18 @@ export const useMotionExecutionFacade = () => {
           wellnessFeedback: result.success && result.feedback ? result.feedback : {
             receivedAt: new Date().toISOString(),
             source: 'local_projection',
-            feedbackState: 'local_only',
+            feedbackState: 'projected',
             domainsTouched: ['activity', 'consistency'],
             consistencySignal: 'Sinal retido localmente'
           }
         };
         storeActions.addOrUpdateWorkoutRecord(newRecord);
+
+        // Despoleta reconciliação pendente do host
+        if (!isDemo && !isHistory) {
+           motionHostFeedbackService.attemptFeedbackReconciliation(sessionId);
+        }
+
         setPendingEnrichmentTarget({ executionId: sessionId, source: 'session' });
       }
     }
@@ -305,6 +323,11 @@ export const useMotionExecutionFacade = () => {
           enrichmentStatus: 'not_requested'
         };
         storeActions.addOrUpdateWorkoutRecord(newRecord);
+
+        // Adiciona V3.2 Retry Queue
+        if (!isDemo && !isHistory) {
+          motionRetryQueueService.enqueueFailedContribution(sessionId, contribution, 'post_confirm', result.reason);
+        }
       }
     }
 
@@ -354,7 +377,7 @@ export const useMotionExecutionFacade = () => {
     };
 
     const contribution = workoutContributionMapper(target.executionId, finalEnrichmentStatus as any, outcome, { source: target.source });
-    const result = await writebackService.attemptWriteback(contribution, isDemo, isHistory, hasWritePermission);
+    const result = await motionHostWritebackAdapter.attemptWriteback(contribution, isDemo, isHistory, hasWritePermission);
 
     if (result.success) {
       trackEvent(MotionEvents.WRITEBACK_SENT, { type: finalEnrichmentStatus });
@@ -379,12 +402,17 @@ export const useMotionExecutionFacade = () => {
         wellnessFeedback: result.success && result.feedback ? result.feedback : {
           receivedAt: new Date().toISOString(),
           source: 'local_projection',
-          feedbackState: 'local_only',
+          feedbackState: 'projected',
           domainsTouched: ['activity', 'consistency', ...(input.discomfortReported && input.discomfortReported !== 'none' ? ['recovery'] : [])],
           consistencySignal: 'Sinal detalhado em histórico local',
           recoverySignal: input.discomfortReported && input.discomfortReported !== 'none' ? 'Atenção à recuperação anotada' : undefined
         }
       });
+
+      // Despoleta reconciliação pendente do host após enriquecimento extra (novo payload sync output)
+      if (!isDemo && !isHistory) {
+         motionHostFeedbackService.attemptFeedbackReconciliation(target.executionId);
+      }
     }
     else {
       trackEvent(MotionEvents.WRITEBACK_FAILED);
@@ -397,6 +425,11 @@ export const useMotionExecutionFacade = () => {
         syncStatus: 'failed',
         enrichmentStatus: 'not_requested' // Revertd logic or flag it as partial if necessary
       });
+
+      // Adiciona V3.2 Retry Queue
+      if (!isDemo && !isHistory) {
+        motionRetryQueueService.enqueueFailedContribution(target.executionId, contribution, 'post_enrichment', result.reason);
+      }
     }
 
     return result;
@@ -405,16 +438,6 @@ export const useMotionExecutionFacade = () => {
   const dispatchUpdateExecutionMode = (mode: ExecutionMode) => {
     storeActions.setExecutionMode(mode);
     trackEvent(MotionEvents.EXECUTION_MODE_SELECTED, { mode });
-  };
-
-  const getSyncDisplayState = (syncStatus: ConfirmedWorkoutRecord['syncStatus']) => {
-    const map = {
-      failed: { label: 'Falha de Sincronização', color: '#ef4444' },
-      pending: { label: 'A Enviar...', color: '#3b82f6' },
-      local_only: { label: 'Retido no Demo', color: '#f59e0b' },
-      synced: { label: 'Sincronizado', color: '#10b981' }
-    };
-    return map[syncStatus] || map.synced;
   };
 
   return {
@@ -426,7 +449,6 @@ export const useMotionExecutionFacade = () => {
     inferredWorkout,
     pendingEnrichmentTarget,
     getPlacementCopy,
-    getSyncDisplayState,
     dispatchSessionComplete,
     dispatchWorkoutConfirmation,
     checkForInferredWorkouts,

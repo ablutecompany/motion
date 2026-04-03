@@ -1,7 +1,7 @@
 import { MotionProfile, WeeklyPlan, Session, CurrentPhase } from '../contracts/types';
-import { AdaptedShellContext } from '../integration/shellContextAdapter';
+import { AdaptedHostContext } from '../integration/motionHostContextAdapter';
 
-export const derivePlanFromContext = (profile: MotionProfile, context: AdaptedShellContext): WeeklyPlan => {
+export const derivePlanFromContext = (profile: MotionProfile, context: AdaptedHostContext): WeeklyPlan => {
   const days = profile.operational.weeklyAvailability.value || 3;
   const analysisSlug = context.activeContext.analysisId?.substring(0, 5) || 'SYS';
   

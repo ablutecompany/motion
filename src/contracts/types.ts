@@ -79,10 +79,13 @@ export interface WorkoutWellnessImpact {
   displayState: 'ready' | 'local_only' | 'sent';
 }
 
+export type WorkoutFeedbackSource = 'local_projection' | 'host_feedback' | 'none';
+export type WorkoutFeedbackStatus = 'unavailable' | 'projected' | 'received' | 'applied' | 'ignored';
+
 export interface WorkoutWellnessFeedback {
   receivedAt: string;
-  source: 'host' | 'local_projection' | 'none';
-  feedbackState: 'available' | 'partial' | 'local_only' | 'unavailable';
+  source: WorkoutFeedbackSource;
+  feedbackState: WorkoutFeedbackStatus;
   domainsTouched: string[];
   recoverySignal?: string;
   nutritionSignal?: string;
@@ -93,6 +96,7 @@ export interface WorkoutWellnessFeedback {
 export interface ConfirmedWorkoutRecord {
   id: string;
   source: 'session' | 'passive_inference';
+  evidenceSource?: MotionInferenceEvidenceSource;
   sessionId?: string;
   confirmedAt: string;
   workoutType?: WorkoutTypePreset;
@@ -105,6 +109,10 @@ export interface ConfirmedWorkoutRecord {
   enrichmentStatus: 'not_requested' | 'skipped' | 'partial' | 'enriched';
   wellnessImpact?: WorkoutWellnessImpact;
   wellnessFeedback?: WorkoutWellnessFeedback;
+  
+  // V3.5 Host Feedback
+  hostFeedback?: WorkoutHostFeedback;
+  operationalAdjustments?: MotionOperationalGoalAdjustment[];
 }
 
 export type PlacementRecommendation = 'forearm' | 'upper-arm' | 'thigh' | 'waist' | 'pocket' | 'surface' | 'none';
@@ -135,11 +143,13 @@ export interface InferenceDecision {
   reasonSummary?: string;
   cooldownHours?: number;
   supportingSignals?: InferenceSignal[];
+  evidenceSource?: MotionInferenceEvidenceSource;
 }
 
 export interface PendingWorkoutConfirmation {
   id: string;
   source: 'passive_inference' | 'session' | 'manual';
+  evidenceSource?: MotionInferenceEvidenceSource;
   detectionState: 'suspected' | 'probable';
   confidence: number;
   startedAt?: string;
@@ -237,3 +247,191 @@ export interface HistoryContext {
   historicalDate?: string;
   historicalPlan?: WeeklyPlan;
 }
+
+// ==========================================
+// V3.1 Signal Bindings & Capabilities
+// ==========================================
+
+export interface SignalCapabilityStatus {
+  environment: 'web' | 'native' | 'unknown';
+  motionSensorsAvailable: boolean;
+  healthPlatformAvailable: boolean;
+  backgroundCollectionAvailable: boolean;
+  permissionState: 'unknown' | 'unsupported' | 'denied' | 'prompt' | 'granted';
+  sourceReliability: 'none' | 'limited' | 'usable';
+}
+
+export type MotionSignalType = 
+  | 'accelerometer' 
+  | 'device_motion' 
+  | 'step_count' 
+  | 'active_energy' 
+  | 'workout_session_hint';
+
+export interface MotionSignalSample {
+  type: MotionSignalType;
+  timestamp: string;
+  value: number | any;
+  unit: string;
+  source: string;
+  confidence?: number;
+}
+
+export interface MotionSignalEvidence {
+  evidenceId: string;
+  timeWindow: { start: string; end: string };
+  sources: MotionSignalType[];
+  summary: Record<string, any>;
+  confidence: number;
+  derivedFlags: string[];
+  rawSampleCount: number;
+  permissionState: string;
+  capabilitySnapshot: SignalCapabilityStatus;
+}
+
+export type MotionInferenceEvidenceSource = 
+  | 'legacy_heuristic' 
+  | 'real_signal' 
+  | 'hybrid';
+
+// ==========================================
+// V3.2 Offline Retry Queue & Reconciliation
+// ==========================================
+
+export type MotionSyncTrigger = 
+  | 'auto_on_open' 
+  | 'auto_on_resume' 
+  | 'manual_retry' 
+  | 'post_confirm' 
+  | 'post_enrichment';
+
+export type MotionSyncResolution = 
+  | 'synced' 
+  | 'kept_pending' 
+  | 'kept_failed' 
+  | 'dropped';
+
+export interface MotionSyncAttempt {
+  attemptedAt: string;
+  trigger: MotionSyncTrigger;
+  outcome: MotionSyncResolution;
+  errorCode?: string;
+  errorMessage?: string;
+}
+
+export interface MotionSyncEligibility {
+  eligible: boolean;
+  reason: 'ready' | 'demo_blocked' | 'history_blocked' | 'cooldown' | 'max_attempts' | 'missing_payload' | 'already_synced';
+}
+
+export interface MotionSyncQueueItem {
+  queueItemId: string;
+  workoutRecordId: string;
+  contributionPayload: MotionContribution;
+  createdAt: string;
+  lastAttemptAt?: string;
+  attemptCount: number;
+  syncStatus: 'pending' | 'failed' | 'synced';
+  failureReason?: string;
+  nextEligibleAt?: string;
+  sourceContext: 'post_confirm' | 'post_enrichment';
+}
+
+// ==========================================
+// V3.3 Timeline Analytics & Filters
+// ==========================================
+
+export type MotionTimelineRange = '7d' | '30d' | '90d' | 'all';
+
+export interface MotionTimelineFilterState {
+  range: MotionTimelineRange;
+  workoutType?: string;
+  sourceType?: ConfirmedWorkoutRecord['source'];
+  syncState?: ConfirmedWorkoutRecord['syncStatus'];
+  onlyEnriched: boolean;
+}
+
+export interface MotionTimelineAnalytics {
+  totalWorkouts: number;
+  confirmedCount: number;
+  inferredCount: number;
+  enrichedCount: number;
+  weeklyFrequency: number;
+  lastWorkoutAt?: string;
+  sourceBreakdown: Record<string, number>;
+  syncBreakdown: Record<string, number>;
+  typeBreakdown: Record<string, number>;
+}
+
+// ==========================================
+// V3.4 Execution Runtime & Hardware Capabilities
+// ==========================================
+
+export type MotionWakeLockStatus = 'unsupported' | 'idle' | 'requesting' | 'active' | 'released' | 'failed';
+export type MotionGuidanceStatus = 'unsupported' | 'off' | 'ready' | 'active' | 'failed';
+export type MotionGuidanceMode = 'silent' | 'text_only' | 'voice_optional';
+
+export interface MotionExecutionBlockState {
+  blockId: string;
+  title: string;
+  position: number;
+  total: number;
+  status: 'upcoming' | 'active' | 'completed';
+  placementRecommendation?: string;
+  guidanceText?: string;
+  targetDurationSeconds?: number;
+}
+
+export interface MotionExecutionRuntimeState {
+  sessionStatus: 'idle' | 'ready' | 'running' | 'paused' | 'completed';
+  currentBlockIndex: number;
+  totalBlocks: number;
+  elapsedSessionSeconds?: number;
+  elapsedBlockSeconds?: number;
+  ambientModeActive: boolean;
+  wakeLockStatus: MotionWakeLockStatus;
+  guidanceStatus: MotionGuidanceStatus;
+  executionMode: ExecutionMode;
+}
+
+// ==========================================
+// V3.5 Host Feedback Loop & Operational Goals
+// ==========================================
+
+export interface WorkoutHostFeedback {
+  feedbackId: string;
+  workoutRecordId: string;
+  source: WorkoutFeedbackSource; // almost always 'host_feedback' but keeps contract
+  receivedAt: string;
+  status: WorkoutFeedbackStatus;
+  payload: any;
+  summary?: string;
+  hostVersion?: string;
+  actionableFlags?: string[];
+  confidence?: number;
+  isSimulatedHostFeedback?: boolean;
+}
+
+export type MotionGoalType = 'focus' | 'frequency' | 'intensity' | 'recovery';
+
+export interface MotionOperationalGoal {
+  goalId: string;
+  title: string;
+  type: MotionGoalType;
+  currentValue?: string | number;
+  targetValue?: string | number;
+  source: 'host' | 'local';
+  scope: 'session' | 'weekly' | 'cycle';
+  active: boolean;
+}
+
+export interface MotionOperationalGoalAdjustment {
+  adjustmentId: string;
+  triggeredByFeedbackId: string;
+  goalId: string;
+  changeType: 'created' | 'modified' | 'reinforced' | 'dropped';
+  previousValue?: string | number;
+  nextValue?: string | number;
+  reasonSummary: string;
+}
+

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { MotionStoreShape, initialMotionState } from './motionStoreShape';
-import { MotionProfile, ExecutionMode, WorkoutConfirmationState } from '../contracts/types';
+import { MotionProfile, ExecutionMode, WorkoutConfirmationState, MotionSyncQueueItem } from '../contracts/types';
 import { trackEvent, MotionEvents } from '../analytics/events';
 
 type SetupUpdates = {
@@ -27,9 +27,13 @@ interface StoreActions {
   
   // History and Progress
   addOrUpdateWorkoutRecord: (record: any) => void;
+
+  // Offline Retry Queue (V3.2)
+  upsertQueueItem: (item: MotionSyncQueueItem) => void;
+  removeQueueItem: (queueItemId: string) => void;
 }
 
-const useMotionStoreBase = create<MotionStoreShape & StoreActions>((set) => ({
+export const useMotionStoreBase = create<MotionStoreShape & StoreActions>((set) => ({
   ...initialMotionState,
   
   setBootData: (data) => set((state) => ({ ...state, ...data })),
@@ -175,6 +179,25 @@ const useMotionStoreBase = create<MotionStoreShape & StoreActions>((set) => ({
         workoutHistory: updatedHistory
       }
     };
+  }),
+
+  // V3.2 Queue Mutators
+  upsertQueueItem: (item) => set((state) => {
+    const q = state.execution.syncQueue || [];
+    const exists = q.find(x => x.queueItemId === item.queueItemId);
+    const newQ = exists 
+      ? q.map(x => x.queueItemId === item.queueItemId ? item : x)
+      : [...q, item];
+    return {
+      execution: { ...state.execution, syncQueue: newQ }
+    };
+  }),
+
+  removeQueueItem: (id) => set((state) => {
+    const q = state.execution.syncQueue || [];
+    return {
+      execution: { ...state.execution, syncQueue: q.filter(x => x.queueItemId !== id) }
+    };
   })
 
 }));
@@ -206,6 +229,7 @@ export const selectors = {
   selectAmbientMode: (s: MotionStoreShape) => s.execution.currentAmbientMode,
   selectInferredWorkout: (s: MotionStoreShape) => s.execution.inferredWorkout,
   selectInferenceContext: (s: MotionStoreShape) => s.execution.inferenceContext,
+  selectSyncQueue: (s: MotionStoreShape) => s.execution.syncQueue || [],
   
   // Progress Selectors
   selectWorkoutHistory: (s: MotionStoreShape) => s.progress.workoutHistory
@@ -223,5 +247,8 @@ export const storeActions = {
   updateProgressiveDisclosure: (feat: string, ack: boolean) => useMotionStoreBase.getState().updateProgressiveDisclosure(feat, ack),
   setInferredWorkout: (workout: any | null) => useMotionStoreBase.getState().setInferredWorkout(workout),
   setInferenceDisposition: (disposition: WorkoutConfirmationState) => useMotionStoreBase.getState().setInferenceDisposition(disposition),
-  addOrUpdateWorkoutRecord: (record: any) => useMotionStoreBase.getState().addOrUpdateWorkoutRecord(record)
+  addOrUpdateWorkoutRecord: (record: any) => useMotionStoreBase.getState().addOrUpdateWorkoutRecord(record),
+  
+  upsertQueueItem: (item: MotionSyncQueueItem) => useMotionStoreBase.getState().upsertQueueItem(item),
+  removeQueueItem: (id: string) => useMotionStoreBase.getState().removeQueueItem(id)
 };

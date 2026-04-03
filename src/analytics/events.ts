@@ -13,6 +13,11 @@ export const MotionEvents = {
   DEMO_BANNER_SHOWN: 'motion_demo_banner_shown',
   HISTORY_CONTEXT_SHOWN: 'motion_history_context_banner_shown',
   FALLBACK_SHOWN: 'motion_fallback_state_shown',
+  BOOT_SUCCESS: 'motion_boot_success',
+  BOOT_FALLBACK: 'motion_boot_fallback',
+  BOOT_PAYLOAD_MALFORMED: 'motion_boot_payload_malformed',
+  HOST_RECONCILIATION_TIMEOUT: 'motion_host_reconciliation_timeout',
+  HOST_RECONCILIATION_REJECT: 'motion_host_reconciliation_reject',
 
   SESSION_VIEWED: 'motion_session_viewed',
   SESSION_COMPLETE_CLICKED: 'motion_session_complete_clicked',

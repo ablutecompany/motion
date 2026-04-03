@@ -2,58 +2,93 @@
  * Ponto de entrada Skeleton da mini-app _motion.
  * Este ficheiro demonstra a orquestração pipeline base.
  */
-import { shellContextAdapter } from './integration/shellContextAdapter';
+import { motionHostContextAdapter } from './integration/motionHostContextAdapter';
+import { derivePlanFromContext } from './resolvers/activeAnalysisResolver';
 import { demoContextResolver } from './resolvers/demoContextResolver';
-import { activeAnalysisResolver } from './resolvers/activeAnalysisResolver';
 import { motionProfileBuilder } from './domain/motionProfileBuilder';
 import { universeEngine } from './engines/universeEngine';
 import { phaseEngine } from './engines/phaseEngine';
 import { planEngine } from './engines/planEngine';
-import { writebackService } from './services/writebackService';
+import { storeActions } from './store/useMotionStore';
+import { trackEvent, MotionEvents } from './analytics/events';
+
+interface BootMotionAppResponse {
+  ready: boolean;
+  viewState?: {
+    universe: string | null;
+    phase: string;
+    weeklyPlan: any;
+  };
+  fallbackMode?: boolean;
+  reason?: string;
+}
 
 // Pseudo-UI para exemplificar o pipeline de boot limpo sem framework
-export const BootMotionApp = (rawShellContext: any) => {
-  console.log('1. [Event] shell_context_received');
-  const snapshot = shellContextAdapter.normalizePayload(rawShellContext);
+export const BootMotionApp = (rawShellContext: any): BootMotionAppResponse => {
+  try {
+    const snapshot = motionHostContextAdapter.adapt(rawShellContext);
 
-  console.log('2. [Event] demo_context_applied?');
-  const demoState = demoContextResolver.intercept(snapshot.isDemo);
-  if (demoState.isActive) {
-     // Configura Store para modo sandbox isolado
-  }
+    const demoState = demoContextResolver.intercept(snapshot.isDemo);
+    if (demoState.isActive) {
+       // Configura Store para modo sandbox isolado
+       storeActions.setBootData({ 
+         integration: { isDemoActive: true, isHistoryModeActive: false, shellSyncStatus: 'idle' },
+         motionProfile: demoState.sandboxProfile 
+       });
+    }
 
-  console.log('3. [Event] active_analysis_resolved');
-  const activeContext = shellContextAdapter.extractActiveContext(snapshot);
-  const analysisRisk = activeAnalysisResolver.resolve(activeContext);
+    const activeContext = snapshot.activeContext;
 
-  if (!activeContext) {
-    throw new Error("Contexto ativo falhou - Abortando arrranque");
-  }
+    if (!activeContext || !activeContext.analysisId) {
+      throw new Error("Contexto ativo ausente ou mal formado.");
+    }
 
-  console.log('4. [Event] motion_profile_built');
-  // Passamos readiness null assumindo 1a run sem inputs
-  const profile = motionProfileBuilder.build(activeContext, null);
+    // Passamos readiness null assumindo 1a run sem inputs
+    const profile = demoState.isActive && demoState.sandboxProfile 
+      ? demoState.sandboxProfile 
+      : motionProfileBuilder.build(activeContext, null);
 
-  console.log('5. [Event] universe_resolved');
-  const universe = universeEngine.suggestUniverse(profile);
+    const universe = universeEngine.suggestUniverse(profile);
 
-  console.log('6. [Event] phase_resolved');
-  // Usamos dummy adherence para arranque
-  const phase = phaseEngine.determinePhase(profile, { score: 1, date: '', fatigueReported: false }, { consecutiveMisses: 0, lastSessionDate: '' });
+    // Usamos dummy adherence para arranque
+    const phase = phaseEngine.determinePhase(profile, { score: 1, date: '', fatigueReported: false }, { consecutiveMisses: 0, lastSessionDate: '' });
 
-  console.log('7. [Event] plan_generated');
-  const weeklyPlan = planEngine.generateWeek(universe, phase, profile);
+    const weeklyPlan = universe 
+      ? planEngine.generateWeek(universe, phase, profile)
+      : null;
 
-  // TODO: Gravar resultados na Store Global
-
-  return {
-    ready: true,
-    viewState: {
+    // Gravar resultados na Store Global
+    storeActions.setBootData({
+      uiOperational: { isBooted: true, setupSyncState: 'synced' },
       universe,
       phase,
-      weeklyPlan
-    }
-  };
+      plan: weeklyPlan,
+      activeContext,
+      motionProfile: profile,
+      integration: { ...snapshot, isDemoActive: demoState.isActive, isHistoryModeActive: false, shellSyncStatus: 'idle' }
+    });
+
+    trackEvent(MotionEvents.BOOT_SUCCESS, { isDemo: demoState.isActive });
+
+    return {
+      ready: true,
+      viewState: {
+        universe,
+        phase,
+        weeklyPlan
+      }
+    };
+  } catch (error: any) {
+    // Isolamento defensivo nativo (Regra V3.6: Proteção contra erro de montagem/render)
+    console.error('[Motion Entrypoint] Falha Crítica no Boot:', error.message);
+    trackEvent(MotionEvents.BOOT_FALLBACK, { reason: error.message });
+    
+    return {
+      ready: false,
+      fallbackMode: true,
+      reason: error.message || 'Falha de Empacotamento Interno'
+    };
+  }
 };
 
 export default BootMotionApp;

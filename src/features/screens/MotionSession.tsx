@@ -3,7 +3,9 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useMotionStore, selectors } from '../../store/useMotionStore';
 import { trackEvent, MotionEvents } from '../../analytics/events';
 import { useMotionExecutionFacade } from '../../facades/useMotionExecutionFacade';
-import { WorkoutConfirmationState, WorkoutEnrichmentInput } from '../../contracts/types';
+import { useMotionSyncFacade } from '../../facades/useMotionSyncFacade';
+import { useMotionExecutionRuntimeFacade } from '../../facades/useMotionExecutionRuntimeFacade';
+import { WorkoutConfirmationState, WorkoutEnrichmentInput, MotionGuidanceMode } from '../../contracts/types';
 import { MotionSectionHeader, MotionSectionCard, MotionStatusPill } from '../components/MotionUI';
 
 interface MotionSessionProps {
@@ -20,6 +22,7 @@ export const MotionSessionScreen: React.FC<MotionSessionProps> = ({ explicitSess
   const universe = useMotionStore(selectors.selectUniverse);
 
   const exec = useMotionExecutionFacade();
+  const syncFacade = useMotionSyncFacade();
   const [localSyncState, setLocalSyncState] = useState<'idle' | 'syncing' | 'synced' | 'failed' | 'blocked_demo' | 'blocked_history'>('idle');
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [showMoreEnrichment, setShowMoreEnrichment] = useState(false);
@@ -48,6 +51,7 @@ export const MotionSessionScreen: React.FC<MotionSessionProps> = ({ explicitSess
   }
 
   const uiModel = exec.selectExecutionViewModel(session.completed, showConfirmation);
+  const runtimeCore = useMotionExecutionRuntimeFacade(session.id);
 
   const handleCompleteRequest = () => {
     trackEvent(MotionEvents.WORKOUT_CONFIRMATION_SHOWN, { sessionId: session.id });
@@ -100,7 +104,7 @@ export const MotionSessionScreen: React.FC<MotionSessionProps> = ({ explicitSess
       return <MotionStatusPill label="Sessão concluída" tone="success" />;
     }
     
-    const syncDisplay = exec.getSyncDisplayState(localSyncState === 'idle' ? 'synced' : localSyncState as any);
+    const syncDisplay = syncFacade.getSyncDisplayState(localSyncState === 'idle' ? 'synced' : localSyncState as any);
 
     switch (localSyncState) {
       case 'syncing': return <MotionStatusPill label={syncDisplay.label} tone="primary" />;
@@ -110,6 +114,79 @@ export const MotionSessionScreen: React.FC<MotionSessionProps> = ({ explicitSess
       case 'blocked_history': return <MotionStatusPill label="Leitura (Histórico)" tone="primary" />;
       default: return <MotionStatusPill label="Sessão Agendada" tone="neutral" />;
     }
+  };
+
+  const renderHardwareIndicators = () => {
+    return (
+      <View style={styles.hwIndicators}>
+        {runtimeCore.runtimeState.wakeLockStatus === 'active' && <Text style={styles.hwText}>Ecrã ativo</Text>}
+        {runtimeCore.runtimeState.wakeLockStatus === 'unsupported' && <Text style={[styles.hwText, { color: '#9ca3af' }]}>Controlo do ecrã indisponível</Text>}
+        {runtimeCore.runtimeState.wakeLockStatus === 'failed' && <Text style={[styles.hwText, { color: '#ef4444' }]}>Falha ao manter ecrã ativo</Text>}
+
+        <Text style={styles.hwSeparator}>•</Text>
+
+        <TouchableOpacity onPress={() => {
+           let n: MotionGuidanceMode = 'silent';
+           if (runtimeCore.guidanceMode === 'silent') n = 'text_only';
+           else if (runtimeCore.guidanceMode === 'text_only' && runtimeCore.runtimeState.guidanceStatus !== 'unsupported') n = 'voice_optional';
+           runtimeCore.setGuidanceLevel(n);
+        }}>
+          {runtimeCore.guidanceMode === 'silent' && <Text style={[styles.hwText, { color: '#9ca3af' }]}>Sem guidance</Text>}
+          {runtimeCore.guidanceMode === 'text_only' && <Text style={styles.hwText}>Guidance textual</Text>}
+          {runtimeCore.guidanceMode === 'voice_optional' && <Text style={[styles.hwText, { color: '#3b82f6' }]}>Guidance por voz</Text>}
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const renderRuntimeBlocks = () => {
+    return (
+      <View style={styles.runtimeBox}>
+         <View style={styles.runtimeHeader}>
+            <Text style={styles.runtimeTitle}>
+              {runtimeCore.runtimeState.sessionStatus === 'idle' ? 'Pronto a arrancar' : 
+               runtimeCore.runtimeState.sessionStatus === 'paused' ? 'Pausado' : 'Em execução'}
+            </Text>
+            
+            {runtimeCore.runtimeState.sessionStatus === 'idle' && (
+              <TouchableOpacity onPress={runtimeCore.actions.startSession} style={styles.runtimeAction}>
+                <Text style={styles.runtimeActionText}>Iniciar Fases</Text>
+              </TouchableOpacity>
+            )}
+            {runtimeCore.runtimeState.sessionStatus === 'running' && (
+              <TouchableOpacity onPress={runtimeCore.actions.pauseSession} style={[styles.runtimeAction, {backgroundColor: '#fef2f2', borderColor: '#fca5a5'}]}>
+                <Text style={[styles.runtimeActionText, {color: '#ef4444'}]}>Pausar</Text>
+              </TouchableOpacity>
+            )}
+            {runtimeCore.runtimeState.sessionStatus === 'paused' && (
+               <TouchableOpacity onPress={runtimeCore.actions.resumeSession} style={[styles.runtimeAction, {backgroundColor: '#ecfdf5', borderColor: '#a7f3d0'}]}>
+                 <Text style={[styles.runtimeActionText, {color: '#10b981'}]}>Retomar</Text>
+               </TouchableOpacity>
+            )}
+         </View>
+
+         {runtimeCore.runtimeState.sessionStatus !== 'idle' && (
+           <View style={styles.blocksList}>
+             {runtimeCore.blocks.map((b) => (
+                <View key={b.blockId} style={[styles.blockItem, b.status === 'active' && styles.blockItemActive]}>
+                   <View>
+                     <Text style={[styles.blockTitle, b.status === 'active' && {color: '#2563eb'}]}>{b.title}</Text>
+                     {(runtimeCore.guidanceMode === 'text_only' || runtimeCore.guidanceMode === 'voice_optional') && b.status === 'active' && b.guidanceText && (
+                        <Text style={styles.blockGuidance}>{b.guidanceText}</Text>
+                     )}
+                   </View>
+                   {b.status === 'active' && (
+                     <Text style={styles.blockStatus}>Bloco atual</Text>
+                   )}
+                   {b.status === 'upcoming' && (
+                     <Text style={styles.blockStatusOff}>Prox</Text>
+                   )}
+                </View>
+             ))}
+           </View>
+         )}
+      </View>
+    );
   };
 
   return (
@@ -162,6 +239,9 @@ export const MotionSessionScreen: React.FC<MotionSessionProps> = ({ explicitSess
               </TouchableOpacity>
             </View>
             <Text style={[styles.stateSubtitle, {marginBottom: 12}]}>{uiModel.executionModeHint}</Text>
+
+            {renderHardwareIndicators()}
+            {renderRuntimeBlocks()}
 
             {uiModel.placementPrompt && (
               <View style={styles.sensorBlock}>
@@ -345,6 +425,24 @@ const styles = StyleSheet.create({
   completeButton: { backgroundColor: '#111827', paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
   completeButtonDisabled: { backgroundColor: '#d1d5db' },
   completeButtonText: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
+
+  hwIndicators: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, backgroundColor: '#f3f4f6', padding: 8, borderRadius: 8, borderLeftWidth: 3, borderLeftColor: '#d1d5db' },
+  hwText: { fontSize: 11, fontWeight: '600', color: '#4b5563' },
+  hwSeparator: { marginHorizontal: 8, color: '#9ca3af' },
+
+  runtimeBox: { backgroundColor: '#ffffff', borderRadius: 8, borderWidth: 1, borderColor: '#e5e7eb', padding: 12, marginBottom: 12 },
+  runtimeHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  runtimeTitle: { fontSize: 13, fontWeight: '700', color: '#111827' },
+  runtimeAction: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: '#d1d5db', backgroundColor: '#f9fafb' },
+  runtimeActionText: { fontSize: 11, fontWeight: '700', color: '#374151', textTransform: 'uppercase' },
+
+  blocksList: { marginTop: 16, borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 16, gap: 12 },
+  blockItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#f9fafb' },
+  blockItemActive: {  },
+  blockTitle: { fontSize: 13, fontWeight: '600', color: '#4b5563', marginBottom: 2 },
+  blockGuidance: { fontSize: 12, color: '#6b7280', fontStyle: 'italic', maxWidth: '90%' },
+  blockStatus: { fontSize: 10, fontWeight: '700', color: '#2563eb', textTransform: 'uppercase', backgroundColor: '#eff6ff', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  blockStatusOff: { fontSize: 10, fontWeight: '600', color: '#9ca3af', textTransform: 'uppercase' },
 
   confirmationBox: { backgroundColor: '#f9fafb', borderWidth: 1, borderColor: '#e5e7eb', padding: 16, borderRadius: 12 },
   confirmationTitle: { fontSize: 13, fontWeight: '700', color: '#111827', marginBottom: 12, textAlign: 'center' },

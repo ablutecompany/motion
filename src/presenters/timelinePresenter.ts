@@ -55,7 +55,12 @@ export const generateMotionTimeline = (records: ConfirmedWorkoutRecord[]): Motio
     
     // Formatting presentation
     const displayTime = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const sourceLabel = record.source === 'session' ? 'Sessão Orientada' : 'Inferência Passiva';
+    let sourceLabel = record.source === 'session' ? 'Sessão Orientada' : 'Inferência Passiva';
+    if (record.source === 'passive_inference' && record.evidenceSource) {
+      if (record.evidenceSource === 'legacy_heuristic') sourceLabel = 'Inferido (heurística)';
+      if (record.evidenceSource === 'hybrid') sourceLabel = 'Inferido (sinais + heurística)';
+      if (record.evidenceSource === 'real_signal') sourceLabel = 'Inferido (sinais reais)';
+    }
     
     let primarySummary = record.source === 'session' ? 'Treino Manual' : 'Atividade Detetada';
     if (record.workoutType && record.workoutType !== 'unknown') {

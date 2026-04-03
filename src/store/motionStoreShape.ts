@@ -2,7 +2,7 @@ import {
   MotionProfile, Universe, CurrentPhase, WeeklyPlan, Session, 
   ReadinessSignal, IntegrationManifestView, MotionContribution,
   TrainingExecutionProfile, WorkoutConfirmationState, AmbientMode,
-  PendingWorkoutConfirmation, ConfirmedWorkoutRecord
+  PendingWorkoutConfirmation, ConfirmedWorkoutRecord, MotionSyncQueueItem
 } from '../contracts/types';
 
 export interface MotionStoreShape {
@@ -45,6 +45,7 @@ export interface MotionStoreShape {
       lastPromptAt: string | null;
       lastDisposition: WorkoutConfirmationState | null;
     };
+    syncQueue: MotionSyncQueueItem[];
   };
 }
 
@@ -92,6 +93,7 @@ export const initialMotionState: MotionStoreShape = {
     inferenceContext: {
       lastPromptAt: null,
       lastDisposition: null,
-    }
+    },
+    syncQueue: []
   }
 };

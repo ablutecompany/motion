@@ -3,12 +3,20 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-nati
 import { useMotionStore, selectors } from '../../store/useMotionStore';
 import { trackEvent, MotionEvents } from '../../analytics/events';
 import { useMotionExecutionFacade } from '../../facades/useMotionExecutionFacade';
+import { useMotionSyncFacade } from '../../facades/useMotionSyncFacade';
+import { useMotionTimelineFacade } from '../../facades/useMotionTimelineFacade';
+import { useMotionHostFeedbackFacade } from '../../facades/useMotionHostFeedbackFacade';
 import { generateMotionTimeline } from '../../presenters/timelinePresenter';
 import { MotionSectionHeader, MotionSectionCard, MotionStatusPill } from '../components/MotionUI';
+import { MotionTimelineFilters, MotionTimelineAnalyticsSummary } from '../components/MotionTimelineAnalyticsViews';
 
 export const MotionProgressScreen: React.FC = () => {
   const [expandedItems, setExpandedItems] = React.useState<Record<string, boolean>>({});
   const facade = useMotionExecutionFacade();
+  const syncFacade = useMotionSyncFacade();
+  const timelineFacade = useMotionTimelineFacade();
+  const feedbackFacade = useMotionHostFeedbackFacade();
+  
   const plan = useMotionStore(selectors.selectPlan);
   const isHistory = useMotionStore(selectors.selectIsHistory);
   const universe = useMotionStore(selectors.selectUniverse);
@@ -24,7 +32,7 @@ export const MotionProgressScreen: React.FC = () => {
   const totalPlanned = plan?.sessions?.length || 0;
   const totalCompleted = workoutHistory.length;
   
-  const timelineGroups = generateMotionTimeline(workoutHistory);
+  const timelineGroups = generateMotionTimeline(timelineFacade.filteredRecords);
 
   const toggleExpand = (id: string) => {
     setExpandedItems((prev: Record<string, boolean>) => {
@@ -62,26 +70,40 @@ export const MotionProgressScreen: React.FC = () => {
         subtitle={`Eixo ${universe ?? 'Universal'}`} 
       />
 
-      <View style={styles.kpiGrid}>
-        <View style={styles.kpiCard}>
-          <Text style={styles.kpiValue}>{totalCompleted}</Text>
-          <Text style={styles.kpiLabel}>Sessões Executadas</Text>
-        </View>
+      {totalCompleted > 0 && (
+        <MotionTimelineFilters 
+          filters={timelineFacade.filters}
+          onSelectRange={timelineFacade.setRange}
+          onToggleEnriched={timelineFacade.toggleEnriched}
+          onToggleSource={timelineFacade.toggleSource}
+          onToggleSync={timelineFacade.toggleSyncState}
+        />
+      )}
 
-        {totalPlanned > 0 && (
-          <View style={[styles.kpiCard, styles.kpiCardDim]}>
-            <Text style={styles.kpiValue}>{totalPlanned}</Text>
-            <Text style={styles.kpiLabel}>Teto Planeado (Ciclo)</Text>
-          </View>
-        )}
-      </View>
+      {totalCompleted > 0 && (
+        <MotionTimelineAnalyticsSummary 
+          analytics={timelineFacade.analytics}
+          isAllRange={timelineFacade.filters.range === 'all'}
+          totalPlannedCycle={totalPlanned}
+        />
+      )}
+
+      {timelineGroups.length === 0 && totalCompleted > 0 && (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyTitle}>Sem Resultados</Text>
+          <Text style={styles.emptyDesc}>Nenhum treino obedece aos filtros analíticos submetidos.</Text>
+        </View>
+      )}
 
       {timelineGroups.map((group) => (
         <View key={group.key} style={styles.timelineGroup}>
           <Text style={styles.listTitle}>{group.title}</Text>
           
           {group.items.map(({ record, displayTime, sourceLabel, primarySummary, secondarySummary, hasWellnessImpact, hasWellnessFeedback, isEnriched }) => {
-            const syncDisplay = facade.getSyncDisplayState(record.syncStatus);
+            const syncDisplay = syncFacade.getSyncDisplayState(record.id, record.syncStatus);
+            const feedbackDisplay = feedbackFacade.getFeedbackSummary(record.id);
+            const adjustments = feedbackFacade.getOperationalAdjustments(record.id);
+            
             const isExpanded = !!expandedItems[record.id];
             
             return (
@@ -105,6 +127,14 @@ export const MotionProgressScreen: React.FC = () => {
 
                 {isExpanded && (
                   <View style={styles.expandedContent}>
+                    {syncFacade.canRetrySync(record.id) && (
+                      <TouchableOpacity 
+                        onPress={() => syncFacade.retrySync(record.id)} 
+                        style={styles.retryBtn}
+                      >
+                        <Text style={styles.retryBtnText}>Tentar Novamente (Sync)</Text>
+                      </TouchableOpacity>
+                    )}
                     {hasWellnessImpact && record.wellnessImpact && (
                       <View style={[styles.wellnessImpactBox, isEnriched && styles.wellnessImpactBoxEnriched]}>
                         <Text style={[styles.wellnessTitle, isEnriched && styles.wellnessTitleEnriched]}>
@@ -127,7 +157,7 @@ export const MotionProgressScreen: React.FC = () => {
                     {hasWellnessFeedback && record.wellnessFeedback && (
                       <View style={[styles.wellnessImpactBox, styles.wellnessFeedbackBox]}>
                         <Text style={styles.wellnessTitleRet}>
-                          {record.wellnessFeedback.source === 'host' ? 'Retorno do Ecossistema' : 'Retorno Projetado (Demo)'}
+                          {feedbackDisplay.label}
                         </Text>
                         <View style={styles.wellnessTraits}>
                           {record.wellnessFeedback.consistencySignal && (
@@ -136,7 +166,22 @@ export const MotionProgressScreen: React.FC = () => {
                           {record.wellnessFeedback.recoverySignal && (
                             <Text style={styles.wellnessTraitRet}>• {record.wellnessFeedback.recoverySignal}</Text>
                           )}
+                          {record.hostFeedback?.actionableFlags && record.hostFeedback.actionableFlags.map(flag => (
+                            <Text key={flag} style={styles.wellnessTraitRet}>• Host Flag Ref: {flag}</Text>
+                          ))}
                         </View>
+                      </View>
+                    )}
+
+                    {adjustments.length > 0 && (
+                      <View style={[styles.wellnessImpactBox, { borderColor: '#f59e0b', backgroundColor: '#fffbeb' }]}>
+                        <Text style={[styles.wellnessTitleRet, { color: '#d97706' }]}>Meta Operacional Dinâmica</Text>
+                        {adjustments.map(adj => (
+                           <View key={adj.adjustmentId} style={styles.wellnessTraits}>
+                             <Text style={[styles.wellnessTraitRet, { color: '#b45309', fontWeight: 'bold' }]}>Meta ajustada: {adj.reasonSummary}</Text>
+                             <Text style={[styles.wellnessTraitRet, { color: '#b45309' }]}>Ajuste aplicado: {adj.nextValue}</Text>
+                           </View>
+                        ))}
                       </View>
                     )}
 
@@ -176,12 +221,6 @@ const styles = StyleSheet.create({
   title: { fontSize: 24, fontWeight: '800', color: '#111827', marginBottom: 4 },
   subtitle: { fontSize: 15, color: '#6b7280', fontWeight: '500' },
 
-  kpiGrid: { flexDirection: 'row', gap: 12, marginBottom: 32 },
-  kpiCard: { flex: 1, backgroundColor: '#ffffff', padding: 20, borderRadius: 12, borderWidth: 1, borderColor: '#e5e7eb', alignItems: 'center' },
-  kpiCardDim: { backgroundColor: '#f9fafb', borderColor: '#f3f4f6' },
-  kpiValue: { fontSize: 32, fontWeight: '800', color: '#111827', marginBottom: 4 },
-  kpiLabel: { fontSize: 12, color: '#6b7280', fontWeight: '600', textTransform: 'uppercase' },
-
   listTitle: { fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 12 },
   
   historyCard: { backgroundColor: '#ffffff', borderRadius: 12, borderWidth: 1, borderColor: '#e5e7eb', padding: 16, marginBottom: 12 },
@@ -202,6 +241,8 @@ const styles = StyleSheet.create({
   expandTrigger: { marginTop: 4, paddingVertical: 8, alignItems: 'center', backgroundColor: '#f9fafb', borderRadius: 8 },
   expandTriggerText: { fontSize: 12, fontWeight: '600', color: '#6b7280' },
   expandedContent: { marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderColor: '#f3f4f6' },
+  retryBtn: { marginBottom: 16, padding: 10, borderRadius: 8, backgroundColor: '#eff6ff', alignItems: 'center', borderWidth: 1, borderColor: '#bfdbfe' },
+  retryBtnText: { color: '#1d4ed8', fontSize: 12, fontWeight: '600' },
 
   historyDataGrid: { flexDirection: 'row', gap: 24 },
   histDataCol: { flex: 1 },
