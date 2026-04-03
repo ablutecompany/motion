@@ -1,5 +1,7 @@
+import { hostBridge } from '../integration/hostBridge';
+
 export const trackEvent = (eventName: string, properties: Record<string, any> = {}) => {
-  console.log(`[ANALYTICS] Registado evento: ${eventName}`, properties);
+  hostBridge.emitAnalytics(eventName, properties);
 };
 
 export const MotionEvents = {
@@ -34,4 +36,43 @@ export const MotionEvents = {
   PROFILE_WRITEBACK_BLOCKED_DEMO: 'motion_profile_writeback_blocked_demo',
   PROFILE_WRITEBACK_BLOCKED_HISTORY: 'motion_profile_writeback_blocked_history',
   PROFILE_WRITEBACK_FAILED: 'motion_profile_writeback_failed',
+  
+  // Execution Layer Events
+  EXECUTION_MODE_SELECTED: 'motion_execution_mode_selected',
+  PLACEMENT_RECOMMENDED: 'motion_placement_recommended',
+  CAPTURE_MODE_ACTIVATED: 'motion_capture_mode_activated',
+  WORKOUT_SUSPECTED: 'motion_workout_suspected',
+  WORKOUT_PROBABLE: 'motion_workout_probable',
+  WORKOUT_CONFIRMED: 'motion_workout_confirmed',
+  WORKOUT_DISMISSED: 'motion_workout_dismissed',
+  WORKOUT_CONFIRMATION_SHOWN: 'motion_workout_confirmation_shown',
+  WORKOUT_CONFIRMATION_DEFERRED: 'motion_workout_confirmation_deferred',
+  WORKOUT_ENRICHED: 'motion_workout_enriched',
+
+  // Post-Workout Enrichment
+  ENRICHMENT_SHOWN: 'motion_workout_enrichment_shown',
+  ENRICHMENT_SKIPPED: 'motion_workout_enrichment_skipped',
+  ENRICHMENT_SAVED: 'motion_workout_enrichment_saved',
+
+  // Passive Inference Events
+  INFERRED_WORKOUT_DETECTED: 'motion_inferred_workout_detected',
+  INFERRED_WORKOUT_PROMPT_SHOWN: 'motion_inferred_workout_prompt_shown',
+  INFERRED_WORKOUT_CONFIRMED: 'motion_inferred_workout_confirmed',
+  INFERRED_WORKOUT_DISMISSED: 'motion_inferred_workout_dismissed',
+  INFERRED_WORKOUT_DEFERRED: 'motion_inferred_workout_deferred',
+  
+  // Progress & History
+  WORKOUT_REFLECTED: 'motion_progress_workout_reflected',
+  ENRICHED_WORKOUT_REFLECTED: 'motion_enriched_workout_reflected',
+  ACTIVITY_HISTORY_ITEM_SHOWN: 'motion_activity_history_item_shown',
+  
+  // Wellness Impact
+  WELLNESS_IMPACT_REFLECTED: 'motion_wellness_impact_reflected',
+  WELLNESS_IMPACT_LOCAL_ONLY_SHOWN: 'motion_wellness_impact_local_only_shown',
+  
+  // Hardening Sync State
+  WORKOUT_SYNC_STATUS_REFLECTED: 'motion_workout_sync_status_reflected',
+  WORKOUT_SYNC_FAILED_REFLECTED: 'motion_workout_sync_failed_reflected',
+  WORKOUT_SYNC_LOCAL_ONLY_REFLECTED: 'motion_workout_sync_local_only_reflected',
+  WORKOUT_RECORD_UPDATED_ENRICHMENT: 'motion_workout_record_updated_with_enrichment'
 };

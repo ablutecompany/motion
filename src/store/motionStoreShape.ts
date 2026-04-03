@@ -1,6 +1,8 @@
 import { 
   MotionProfile, Universe, CurrentPhase, WeeklyPlan, Session, 
-  ReadinessSignal, IntegrationManifestView, MotionContribution
+  ReadinessSignal, IntegrationManifestView, MotionContribution,
+  TrainingExecutionProfile, WorkoutConfirmationState, AmbientMode,
+  PendingWorkoutConfirmation, ConfirmedWorkoutRecord
 } from '../contracts/types';
 
 export interface MotionStoreShape {
@@ -22,6 +24,7 @@ export interface MotionStoreShape {
   readiness: ReadinessSignal | null;
   progress: {
     completedSessionIds: string[];
+    workoutHistory: ConfirmedWorkoutRecord[];
   };
   permissions: IntegrationManifestView | null;
   contributions: MotionContribution[];
@@ -31,6 +34,17 @@ export interface MotionStoreShape {
   uiOperational: {
     isBooted: boolean;
     setupSyncState: 'idle' | 'dirty' | 'syncing' | 'synced' | 'blocked_demo' | 'blocked_history' | 'failed';
+  };
+  execution: {
+    profile: TrainingExecutionProfile;
+    activeWorkoutState: WorkoutConfirmationState | null;
+    currentAmbientMode: AmbientMode | null;
+    activeSessionId: string | null;
+    inferredWorkout: PendingWorkoutConfirmation | null;
+    inferenceContext: {
+      lastPromptAt: string | null;
+      lastDisposition: WorkoutConfirmationState | null;
+    };
   };
 }
 
@@ -52,7 +66,8 @@ export const initialMotionState: MotionStoreShape = {
   sessions: [],
   readiness: null,
   progress: {
-    completedSessionIds: []
+    completedSessionIds: [],
+    workoutHistory: []
   },
   permissions: null,
   contributions: [],
@@ -62,5 +77,21 @@ export const initialMotionState: MotionStoreShape = {
   uiOperational: {
     isBooted: false,
     setupSyncState: 'idle'
+  },
+  execution: {
+    profile: {
+      preferredMode: 'hybrid',
+      allowsAmbientMode: true,
+      allowsSensorCapture: true,
+      progressiveDisclosureState: {}
+    },
+    activeWorkoutState: null,
+    currentAmbientMode: null,
+    activeSessionId: null,
+    inferredWorkout: null,
+    inferenceContext: {
+      lastPromptAt: null,
+      lastDisposition: null,
+    }
   }
 };

@@ -3,6 +3,8 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-nati
 import { useMotionStore, selectors } from '../../store/useMotionStore';
 import { trackEvent, MotionEvents } from '../../analytics/events';
 import { MotionSessionScreen } from './MotionSession';
+import { useMotionExecutionFacade } from '../../facades/useMotionExecutionFacade';
+import { MotionSectionHeader, MotionSectionCard, MotionStatusPill } from '../components/MotionUI';
 
 export const MotionPlanScreen: React.FC = () => {
   const plan = useMotionStore(selectors.selectPlan);
@@ -12,6 +14,7 @@ export const MotionPlanScreen: React.FC = () => {
   const profile = useMotionStore(selectors.selectMotionProfile);
   const isHistory = useMotionStore(selectors.selectIsHistory);
 
+  const exec = useMotionExecutionFacade();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -29,15 +32,24 @@ export const MotionPlanScreen: React.FC = () => {
 
   const renderSyncBadge = () => {
     if (syncState === 'dirty') {
-      return <Text style={styles.badgeDirty}>Ajuste local aplicado ao plano</Text>;
+      return <MotionStatusPill label="Ajuste local aplicado ao plano" tone="warning" />;
     } else if (syncState === 'failed') {
-      return <Text style={styles.badgeFailed}>Sincronização indisponível. Plano local mantido.</Text>;
+      return <MotionStatusPill label="Sincronização indisponível. Plano local mantido." tone="error" />;
     } else if (syncState === 'blocked_demo') {
-      return <Text style={styles.badgeDemo}>Modo demo: alterações apenas locais</Text>;
+      return <MotionStatusPill label="Restrito ao Demo" tone="neutral" />;
     } else if (syncState === 'blocked_history') {
-      return <Text style={styles.badgeHistory}>Histórico: visualização sem edição</Text>;
+      return <MotionStatusPill label="Leitura (Histórico)" tone="primary" />;
     }
     return null;
+  };
+
+  const getExecutionCardCopy = () => {
+    switch (exec.currentExecutionMode) {
+      case 'follow': return { title: 'Acompanhamento Silencioso', desc: 'A aplicação assiste e sinaliza métricas apenas quando exigido.' };
+      case 'guide': return { title: 'Doutrina Guiada', desc: 'Condução dedicada ativa de bloco a bloco, com gestão de cadências.' };
+      case 'hybrid': return { title: 'Execução Mista', desc: 'Orienta apenas nas transições críticas, mantendo discrição base.' };
+      default: return { title: 'Pendente', desc: '-' };
+    }
   };
 
   if (selectedSessionId) {
@@ -57,13 +69,15 @@ export const MotionPlanScreen: React.FC = () => {
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Plano Corrente</Text>
-        <Text style={styles.subtitle}>{phase ? `Fase de ${phase}` : 'Diretiva em aberto'}</Text>
+      <MotionSectionHeader 
+        title="Plano Corrente" 
+        subtitle={phase ? `Fase de ${phase}` : 'Diretiva em aberto'} 
+      />
+      <View style={{ marginBottom: 20 }}>
         {renderSyncBadge()}
       </View>
 
-      <View style={styles.card}>
+      <MotionSectionCard>
         <View style={styles.contextHeader}>
           <View style={[styles.dot, { backgroundColor: getUniverseAccent(universe) }]} />
           <Text style={styles.contextTitle}>Contexto Tático Vigente</Text>
@@ -82,7 +96,13 @@ export const MotionPlanScreen: React.FC = () => {
             <Text style={styles.contextValue}>{op?.trainingEnvironment?.value ?? '-'}</Text>
           </View>
         </View>
-      </View>
+
+        <View style={styles.execSummaryBox}>
+           <Text style={styles.execSummaryTitle}>Preferência: {getExecutionCardCopy().title}</Text>
+           <Text style={styles.execSummaryDesc}>{getExecutionCardCopy().desc}</Text>
+           <Text style={styles.execSummaryMicro}>* Preparado para modo discreto ou captura de integridade nativa, quando aplicável pela Sessão.</Text>
+        </View>
+      </MotionSectionCard>
 
       <Text style={styles.listSectionTitle}>Instâncias Operacionais ({plan.sessions.length})</Text>
 
@@ -112,6 +132,15 @@ export const MotionPlanScreen: React.FC = () => {
               <Text style={styles.detailValue}>{session.intensityMultiplier}x</Text>
             </View>
           </View>
+
+          {/* Execution Readiness Signal */}
+          <View style={styles.readinessBox}>
+            <Text style={styles.readinessText}>A aguardar aprovação em modo {exec.currentExecutionMode.toUpperCase()}</Text>
+            {exec.getPlacementCopy('corrida_base', 0.8).copy.showPlacement && (
+              <Text style={styles.readinessSubtext}>✓ Hardware Tracking disponível para este bloco</Text>
+            )}
+          </View>
+
           <View style={styles.cardFooter}>
             <Text style={styles.sessionIdText}>Ref: {session.id.split('-').pop()}</Text>
             <Text style={styles.actionText}>{session.completed || isHistory ? 'Visualizar detalhe →' : 'Abrir Sessão →'}</Text>
@@ -165,5 +194,14 @@ const styles = StyleSheet.create({
   
   cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderColor: '#f3f4f6', paddingTop: 12 },
   sessionIdText: { fontSize: 11, color: '#d1d5db', fontFamily: 'monospace' },
-  actionText: { fontSize: 13, fontWeight: '600', color: '#111827' }
+  actionText: { fontSize: 13, fontWeight: '600', color: '#111827' },
+  
+  execSummaryBox: { marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderColor: '#f3f4f6' },
+  execSummaryTitle: { fontSize: 13, fontWeight: '700', color: '#111827', marginBottom: 4 },
+  execSummaryDesc: { fontSize: 13, color: '#4b5563', marginBottom: 8 },
+  execSummaryMicro: { fontSize: 11, color: '#9ca3af', fontStyle: 'italic' },
+  
+  readinessBox: { backgroundColor: '#f9fafb', padding: 8, borderRadius: 6, marginBottom: 12 },
+  readinessText: { fontSize: 12, fontWeight: '500', color: '#374151' },
+  readinessSubtext: { fontSize: 11, color: '#10b981', marginTop: 2 }
 });

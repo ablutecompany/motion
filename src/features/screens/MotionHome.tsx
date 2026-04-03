@@ -2,6 +2,10 @@ import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { useMotionStore, selectors } from '../../store/useMotionStore';
 import { trackEvent, MotionEvents } from '../../analytics/events';
+import { useMotionExecutionFacade } from '../../facades/useMotionExecutionFacade';
+import { WorkoutConfirmationState, WorkoutEnrichmentInput } from '../../contracts/types';
+import { TouchableOpacity } from 'react-native';
+import { MotionSectionHeader, MotionSectionCard, MotionMetaRow, MotionStatusPill } from '../components/MotionUI';
 
 export const MotionHome: React.FC = () => {
   const universe = useMotionStore(selectors.selectUniverse);
@@ -11,6 +15,10 @@ export const MotionHome: React.FC = () => {
   const activeContext = useMotionStore(selectors.selectActiveContext);
   const isHistory = useMotionStore(selectors.selectIsHistory);
   const isDemo = useMotionStore(selectors.selectIsDemo);
+  const exec = useMotionExecutionFacade();
+  
+  const [localSyncState, setLocalSyncState] = React.useState<'idle' | 'syncing' | 'synced' | 'failed' | 'blocked_demo' | 'blocked_history'>('idle');
+  const [enrichmentInput, setEnrichmentInput] = React.useState<WorkoutEnrichmentInput>({});
 
   useEffect(() => {
     trackEvent(MotionEvents.HOME_VIEWED);
@@ -26,17 +34,113 @@ export const MotionHome: React.FC = () => {
   };
 
   const getEnvironmentStateLabel = () => {
-    if (isHistory) return 'Histórico Fechado';
-    if (isDemo) return 'Ambiente Simulado';
+    if (isHistory) return 'Leitura (Histórico)';
+    if (isDemo) return 'Restrito ao Demo';
     return 'Tempo Real';
+  };
+
+  const handleInferredConfirmation = async (state: WorkoutConfirmationState) => {
+    if (!exec.inferredWorkout) return;
+    
+    setLocalSyncState('syncing');
+    const result = await exec.dispatchInferredWorkoutConfirmation(state);
+    
+    if (result.success) {
+      setLocalSyncState('synced');
+    } else {
+      setLocalSyncState(result.reason as any || 'failed');
+    }
+  };
+
+  const handleEnrichment = async (skip: boolean) => {
+    setLocalSyncState('syncing');
+    const result = await exec.dispatchWorkoutEnrichment(skip ? null : enrichmentInput);
+    
+    if (result.success) {
+      setLocalSyncState('synced');
+    } else {
+      setLocalSyncState(result.reason as any || 'failed');
+    }
   };
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Visão Geral</Text>
-        <Text style={styles.subtitle}>Enquadramento central da mini-app.</Text>
-      </View>
+      <MotionSectionHeader title="Visão Geral" subtitle="Enquadramento central da mini-app." />
+
+      {exec.pendingEnrichmentTarget?.source === 'passive_inference' && (
+        <View style={styles.enrichmentBox}>
+          <Text style={styles.enrichmentTitle}>Treino Registado</Text>
+          <Text style={styles.enrichmentSubtitle}>Para calibrar o sinal para o wellness, queres adicionar mais detalhe a este registo?</Text>
+          
+          <View style={styles.enrichmentGrid}>
+             <View style={styles.optBlock}>
+                <Text style={styles.optLabel}>Sensação</Text>
+                <View style={styles.optToggles}>
+                  {['light', 'moderate', 'hard'].map(val => (
+                    <TouchableOpacity 
+                      key={val} 
+                      style={[styles.optBtn, enrichmentInput.perceivedIntensity === val && styles.optBtnActive]}
+                      onPress={() => setEnrichmentInput({ ...enrichmentInput, perceivedIntensity: val as any })}
+                    >
+                       <Text style={[styles.optBtnText, enrichmentInput.perceivedIntensity === val && styles.optBtnTextActive]}>
+                         {val === 'light' ? 'Leve' : val === 'moderate' ? 'Moderada' : 'Intensa'}
+                       </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+             </View>
+             <View style={styles.optBlock}>
+                <Text style={styles.optLabel}>Tipo Primário</Text>
+                <View style={styles.optToggles}>
+                  {['strength', 'cardio', 'walk'].map(val => (
+                    <TouchableOpacity 
+                      key={val} 
+                      style={[styles.optBtn, enrichmentInput.workoutType === val && styles.optBtnActive]}
+                      onPress={() => setEnrichmentInput({ ...enrichmentInput, workoutType: val as any })}
+                    >
+                       <Text style={[styles.optBtnText, enrichmentInput.workoutType === val && styles.optBtnTextActive]}>
+                         {val === 'strength' ? 'Força' : val === 'cardio' ? 'Cardio' : 'Caminhada'}
+                       </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+             </View>
+          </View>
+
+          <View style={styles.enrichmentActions}>
+            <TouchableOpacity onPress={() => handleEnrichment(false)} disabled={localSyncState === 'syncing' || !enrichmentInput.perceivedIntensity} style={[styles.confBtn, styles.confBtnPrimary, (!enrichmentInput.perceivedIntensity || localSyncState === 'syncing') && styles.confBtnDisabled]}>
+              <Text style={styles.confBtnPrimaryText}>Guardar Detalhe</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => handleEnrichment(true)} disabled={localSyncState === 'syncing'} style={styles.confBtn}>
+              <Text style={styles.confBtnText}>Ignorar Opcional</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {exec.inferredWorkout && exec.inferredWorkout.detectionState !== 'suspected' && !exec.pendingEnrichmentTarget && (
+        <View style={styles.inferredCard}>
+          <View style={styles.inferredHeaderBlock}>
+            <View style={styles.inferredPulseDot} />
+            <Text style={styles.inferredTitle}>Nova Atividade Detetada</Text>
+          </View>
+          <Text style={styles.inferredSubtitle}>
+            {exec.inferredWorkout.reasonSummary || 'Detetámos comportamentos elegíveis. Confirmas o fecho de um novo treino?'}
+          </Text>
+          
+          <View style={styles.confirmationActions}>
+            <TouchableOpacity onPress={() => handleInferredConfirmation('confirmed')} disabled={localSyncState === 'syncing'} style={[styles.confBtn, styles.confBtnPrimary, localSyncState === 'syncing' && styles.confBtnDisabled]}>
+              <Text style={styles.confBtnPrimaryText}>{localSyncState === 'syncing' ? 'A Enviar...' : 'Confirmar Treino'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => handleInferredConfirmation('deferred')} disabled={localSyncState === 'syncing'} style={styles.confBtn}>
+              <Text style={styles.confBtnText}>Deixar Pendente</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => handleInferredConfirmation('dismissed')} disabled={localSyncState === 'syncing'} style={styles.confBtn}>
+              <Text style={styles.confBtnText}>Rejeitar (Falso Positivo)</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       <View style={styles.kpiGrid}>
         <View style={styles.kpiCard}>
@@ -55,22 +159,12 @@ export const MotionHome: React.FC = () => {
         </View>
       </View>
 
-      <View style={styles.card}>
+      <MotionSectionCard>
         <Text style={styles.cardSectionTitle}>Resumo Operacional</Text>
-        
-        <View style={styles.row}>
-          <Text style={styles.rowLabel}>Contexto Aplicado</Text>
-          <Text style={styles.rowValue}>{getEnvironmentStateLabel()}</Text>
-        </View>
-        <View style={styles.row}>
-          <Text style={styles.rowLabel}>Foco Diretor</Text>
-          <Text style={styles.rowValue}>{profile?.operational?.currentGoal?.value ?? 'Por definir'}</Text>
-        </View>
-        <View style={[styles.row, { borderBottomWidth: 0 }]}>
-          <Text style={styles.rowLabel}>Sessões Agendadas</Text>
-          <Text style={styles.rowValue}>{plan?.sessions?.length ?? 0} Módulos</Text>
-        </View>
-      </View>
+        <MotionMetaRow label="Contexto Aplicado" value={getEnvironmentStateLabel()} />
+        <MotionMetaRow label="Foco Diretor" value={profile?.operational?.currentGoal?.value ?? 'Por definir'} />
+        <MotionMetaRow label="Sessões Agendadas" value={`${plan?.sessions?.length ?? 0} Módulos`} />
+      </MotionSectionCard>
 
       <View style={styles.footerNote}>
         <Text style={styles.footerText}>
@@ -94,12 +188,34 @@ const styles = StyleSheet.create({
   kpiLabel: { fontSize: 12, textTransform: 'uppercase', color: '#6b7280', fontWeight: '700', letterSpacing: 0.5 },
   kpiValue: { fontSize: 18, fontWeight: '700', color: '#111827' },
   
-  card: { backgroundColor: '#ffffff', borderRadius: 12, borderWidth: 1, borderColor: '#e5e7eb', paddingHorizontal: 16, paddingVertical: 8, marginBottom: 24 },
-  cardSectionTitle: { fontSize: 14, fontWeight: '700', color: '#111827', marginVertical: 12 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderColor: '#f3f4f6' },
-  rowLabel: { fontSize: 13, color: '#4b5563', fontWeight: '500' },
-  rowValue: { fontSize: 14, color: '#111827', fontWeight: '600' },
+  cardSectionTitle: { fontSize: 14, fontWeight: '700', color: '#111827', marginBottom: 12 },
 
   footerNote: { backgroundColor: '#f9fafb', padding: 16, borderRadius: 8, borderWidth: 1, borderColor: '#f3f4f6' },
-  footerText: { color: '#9ca3af', fontSize: 12, lineHeight: 18, textAlign: 'center' }
+  footerText: { color: '#9ca3af', fontSize: 12, lineHeight: 18, textAlign: 'center' },
+
+  inferredCard: { backgroundColor: '#fdf4ff', borderRadius: 12, borderWidth: 1, borderColor: '#fbcfe8', padding: 16, marginBottom: 24 },
+  inferredHeaderBlock: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  inferredPulseDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#ec4899', marginRight: 8 },
+  inferredTitle: { fontSize: 14, fontWeight: '700', color: '#831843' },
+  inferredSubtitle: { fontSize: 13, color: '#9d174d', marginBottom: 16 },
+
+  confirmationActions: { flexDirection: 'column', gap: 8 },
+  confBtn: { paddingVertical: 12, borderRadius: 8, alignItems: 'center', backgroundColor: '#fce7f3' },
+  confBtnPrimary: { backgroundColor: '#be185d' },
+  confBtnDisabled: { backgroundColor: '#fdf2f8', opacity: 0.6 },
+  confBtnText: { color: '#831843', fontSize: 14, fontWeight: '600' },
+  confBtnPrimaryText: { color: '#ffffff', fontSize: 14, fontWeight: '700' },
+  
+  enrichmentBox: { backgroundColor: '#fdf4ff', borderWidth: 1, borderColor: '#fbcfe8', padding: 16, borderRadius: 12, marginBottom: 24 },
+  enrichmentTitle: { fontSize: 14, fontWeight: '700', color: '#831843', marginBottom: 4 },
+  enrichmentSubtitle: { fontSize: 13, color: '#9d174d', marginBottom: 16 },
+  enrichmentGrid: { marginBottom: 16, gap: 12 },
+  optBlock: { marginBottom: 8 },
+  optLabel: { fontSize: 12, fontWeight: '600', color: '#9d174d', marginBottom: 8 },
+  optToggles: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  optBtn: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16, borderWidth: 1, borderColor: '#fbcfe8', backgroundColor: '#fce7f3' },
+  optBtnActive: { backgroundColor: '#be185d', borderColor: '#be185d' },
+  optBtnText: { fontSize: 12, color: '#9d174d', fontWeight: '500' },
+  optBtnTextActive: { color: '#ffffff' },
+  enrichmentActions: { flexDirection: 'column', gap: 8 }
 });

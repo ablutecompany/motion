@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { MotionStoreShape, initialMotionState } from './motionStoreShape';
-import { MotionProfile } from '../contracts/types';
+import { MotionProfile, ExecutionMode, WorkoutConfirmationState } from '../contracts/types';
 import { trackEvent, MotionEvents } from '../analytics/events';
 
 type SetupUpdates = {
@@ -16,6 +16,17 @@ interface StoreActions {
   updateOperationalSetupLocal: (updates: SetupUpdates) => void;
   regeneratePlanLocal: () => void;
   setSetupSyncState: (state: MotionStoreShape['uiOperational']['setupSyncState']) => void;
+  
+  // Execution Layer Operations
+  setExecutionMode: (mode: ExecutionMode) => void;
+  setWorkoutConfirmationState: (state: WorkoutConfirmationState | null) => void;
+  updateProgressiveDisclosure: (featureKey: string, acknowledged: boolean) => void;
+  
+  setInferredWorkout: (workout: any | null) => void;
+  setInferenceDisposition: (disposition: WorkoutConfirmationState) => void;
+  
+  // History and Progress
+  addOrUpdateWorkoutRecord: (record: any) => void;
 }
 
 const useMotionStoreBase = create<MotionStoreShape & StoreActions>((set) => ({
@@ -101,7 +112,71 @@ const useMotionStoreBase = create<MotionStoreShape & StoreActions>((set) => ({
         sessions: newSessions
       }
     };
+  }),
+
+  // Execution Store Injects
+  setExecutionMode: (mode) => set((state) => ({
+    execution: {
+      ...state.execution,
+      profile: { ...state.execution.profile, preferredMode: mode }
+    }
+  })),
+
+  setWorkoutConfirmationState: (workoutState) => set((state) => ({
+    execution: {
+      ...state.execution,
+      activeWorkoutState: workoutState
+    }
+  })),
+
+  updateProgressiveDisclosure: (featureKey, acknowledged) => set((state) => ({
+    execution: {
+      ...state.execution,
+      profile: {
+        ...state.execution.profile,
+        progressiveDisclosureState: {
+          ...state.execution.profile.progressiveDisclosureState,
+          [featureKey]: acknowledged
+        }
+      }
+    }
+  })),
+
+  setInferredWorkout: (workout) => set((state) => ({
+    execution: {
+      ...state.execution,
+      inferredWorkout: workout,
+      inferenceContext: {
+        ...state.execution.inferenceContext,
+        lastPromptAt: workout ? new Date().toISOString() : state.execution.inferenceContext.lastPromptAt
+      }
+    }
+  })),
+
+  setInferenceDisposition: (disposition) => set((state) => ({
+    execution: {
+      ...state.execution,
+      inferenceContext: {
+        ...state.execution.inferenceContext,
+        lastDisposition: disposition
+      }
+    }
+  })),
+
+  addOrUpdateWorkoutRecord: (record) => set((state) => {
+    const exists = state.progress.workoutHistory.find(r => r.id === record.id);
+    const updatedHistory = exists 
+      ? state.progress.workoutHistory.map(r => r.id === record.id ? { ...r, ...record } : r)
+      : [record, ...state.progress.workoutHistory];
+
+    return {
+      progress: {
+        ...state.progress,
+        workoutHistory: updatedHistory
+      }
+    };
   })
+
 }));
 
 export const useMotionStore = <T>(selector: (state: MotionStoreShape) => T): T => {
@@ -123,7 +198,17 @@ export const selectors = {
   selectHasWritePermission: (s: MotionStoreShape) => {
     if (!s.permissions || !Array.isArray(s.permissions.permissions)) return false;
     return s.permissions.permissions.includes('write_progress') || s.permissions.permissions.includes('write_setup');
-  }
+  },
+  
+  // Execution Selectors
+  selectExecutionProfile: (s: MotionStoreShape) => s.execution.profile,
+  selectWorkoutState: (s: MotionStoreShape) => s.execution.activeWorkoutState,
+  selectAmbientMode: (s: MotionStoreShape) => s.execution.currentAmbientMode,
+  selectInferredWorkout: (s: MotionStoreShape) => s.execution.inferredWorkout,
+  selectInferenceContext: (s: MotionStoreShape) => s.execution.inferenceContext,
+  
+  // Progress Selectors
+  selectWorkoutHistory: (s: MotionStoreShape) => s.progress.workoutHistory
 };
 
 export const storeActions = {
@@ -131,5 +216,12 @@ export const storeActions = {
   markSessionCompletedLocal: (sessionId: string) => useMotionStoreBase.getState().markSessionCompletedLocal(sessionId),
   updateOperationalSetupLocal: (u: SetupUpdates) => useMotionStoreBase.getState().updateOperationalSetupLocal(u),
   regeneratePlanLocal: () => useMotionStoreBase.getState().regeneratePlanLocal(),
-  setSetupSyncState: (state: MotionStoreShape['uiOperational']['setupSyncState']) => useMotionStoreBase.getState().setSetupSyncState(state)
+  setSetupSyncState: (state: MotionStoreShape['uiOperational']['setupSyncState']) => useMotionStoreBase.getState().setSetupSyncState(state),
+
+  setExecutionMode: (mode: ExecutionMode) => useMotionStoreBase.getState().setExecutionMode(mode),
+  setWorkoutConfirmationState: (state: WorkoutConfirmationState | null) => useMotionStoreBase.getState().setWorkoutConfirmationState(state),
+  updateProgressiveDisclosure: (feat: string, ack: boolean) => useMotionStoreBase.getState().updateProgressiveDisclosure(feat, ack),
+  setInferredWorkout: (workout: any | null) => useMotionStoreBase.getState().setInferredWorkout(workout),
+  setInferenceDisposition: (disposition: WorkoutConfirmationState) => useMotionStoreBase.getState().setInferenceDisposition(disposition),
+  addOrUpdateWorkoutRecord: (record: any) => useMotionStoreBase.getState().addOrUpdateWorkoutRecord(record)
 };

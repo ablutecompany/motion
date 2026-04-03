@@ -53,6 +53,129 @@ export interface Session {
   durationMinutes: number;
   intensityMultiplier: number;
   completed: boolean;
+  executionBlocks?: ExecutionBlock[];
+}
+
+export type ExecutionMode = 'follow' | 'guide' | 'hybrid';
+export type AmbientMode = 'ambient' | 'pocket' | 'active';
+
+export type WorkoutTypePreset = 'strength' | 'cardio' | 'mobility' | 'mixed' | 'unknown';
+export type PerceivedIntensity = 'light' | 'moderate' | 'hard' | 'unknown';
+
+export type FeltState = 'good' | 'tired' | 'heavy' | 'stiff' | 'unclear' | 'unknown';
+export type DiscomfortLevel = 'none' | 'mild' | 'relevant' | 'unknown';
+
+export interface WorkoutEnrichmentInput {
+  workoutType?: WorkoutTypePreset;
+  perceivedIntensity?: PerceivedIntensity;
+  feltState?: FeltState;
+  discomfortReported?: DiscomfortLevel;
+}
+
+export interface WorkoutWellnessImpact {
+  interestingOutcome?: string;
+  usefulOutcome?: string;
+  fatigueIndication?: string;
+  displayState: 'ready' | 'local_only' | 'sent';
+}
+
+export interface WorkoutWellnessFeedback {
+  receivedAt: string;
+  source: 'host' | 'local_projection' | 'none';
+  feedbackState: 'available' | 'partial' | 'local_only' | 'unavailable';
+  domainsTouched: string[];
+  recoverySignal?: string;
+  nutritionSignal?: string;
+  hydrationSignal?: string;
+  consistencySignal?: string;
+}
+
+export interface ConfirmedWorkoutRecord {
+  id: string;
+  source: 'session' | 'passive_inference';
+  sessionId?: string;
+  confirmedAt: string;
+  workoutType?: WorkoutTypePreset;
+  perceivedIntensity?: PerceivedIntensity;
+  feltState?: FeltState;
+  discomfortReported?: DiscomfortLevel;
+  isLocalOnly: boolean;
+  isHistoricalContext: boolean;
+  syncStatus: 'local_only' | 'pending' | 'synced' | 'failed';
+  enrichmentStatus: 'not_requested' | 'skipped' | 'partial' | 'enriched';
+  wellnessImpact?: WorkoutWellnessImpact;
+  wellnessFeedback?: WorkoutWellnessFeedback;
+}
+
+export type PlacementRecommendation = 'forearm' | 'upper-arm' | 'thigh' | 'waist' | 'pocket' | 'surface' | 'none';
+export type CaptureMode = 'passive' | 'timed' | 'repetition_tracking' | 'set_tracking' | 'rest_tracking' | 'unknown';
+export type FallbackMode = 'continue_without_capture' | 'manual_confirmation' | 'time_based_only';
+
+export type WorkoutConfirmationState = 'suspected' | 'probable' | 'confirmed' | 'dismissed' | 'deferred' | 'enriched';
+
+export interface InferenceSignal {
+  type: 'accelerometer_activity' | 'heart_rate_elevation' | 'location_change' | 'device_locked';
+  confidence: number;
+  timestamp: string;
+  durationMinutes?: number;
+  source: 'mock' | 'os_health' | 'wearable';
+}
+
+export interface InferenceContext {
+  currentTime: string;
+  currentExecutionMode?: ExecutionMode;
+  lastUserDisposition?: WorkoutConfirmationState;
+  lastPromptAt?: string;
+  hasConfirmedWorkoutInWindow?: boolean;
+}
+
+export interface InferenceDecision {
+  state: 'none' | 'suspected' | 'probable';
+  aggregateConfidence: number;
+  reasonSummary?: string;
+  cooldownHours?: number;
+  supportingSignals?: InferenceSignal[];
+}
+
+export interface PendingWorkoutConfirmation {
+  id: string;
+  source: 'passive_inference' | 'session' | 'manual';
+  detectionState: 'suspected' | 'probable';
+  confidence: number;
+  startedAt?: string;
+  endedAt?: string;
+  relatedSessionId?: string;
+  reasonSummary?: string;
+  supportingSignalsCount?: number;
+  inferenceVersion?: string;
+}
+
+export interface ExecutionBlock {
+  id: string;
+  name: string;
+  placementRecommendation: PlacementRecommendation;
+  captureMode: CaptureMode;
+  fallbackMode: FallbackMode;
+  captureConfidence?: number; 
+}
+
+export interface TrainingExecutionProfile {
+  preferredMode: ExecutionMode;
+  allowsAmbientMode: boolean;
+  allowsSensorCapture: boolean;
+  progressiveDisclosureState: Record<string, boolean>; 
+}
+
+export interface WorkoutOutcome {
+  interesting: {
+    consistency?: string;
+    flow?: string;
+  };
+  useful: {
+    countsAs: CurrentPhase;
+    fatigueIndication?: string;
+    recoveryRecommendation?: string;
+  }
 }
 
 export interface WeeklyPlan {
@@ -94,7 +217,7 @@ export interface ReadinessSignal {
 
 export interface MotionContribution {
   source: '_motion_app';
-  type: 'adherence_update' | 'readiness_update' | 'universe_confirmed' | 'setup_updated';
+  type: 'adherence_update' | 'readiness_update' | 'universe_confirmed' | 'setup_updated' | 'workout_completed' | 'workout_suspicion_rejected';
   payload: any;
   timestamp: string;
 }

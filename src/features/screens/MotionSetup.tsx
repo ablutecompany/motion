@@ -3,7 +3,9 @@ import { View, Text, TouchableOpacity, TextInput, StyleSheet } from 'react-nativ
 import { useMotionStore, selectors, storeActions } from '../../store/useMotionStore';
 import { trackEvent, MotionEvents } from '../../analytics/events';
 import { writebackService } from '../../services/writebackService';
-import { MotionContribution } from '../../contracts/types';
+import { useMotionExecutionFacade } from '../../facades/useMotionExecutionFacade';
+import { MotionContribution, ExecutionMode } from '../../contracts/types';
+import { MotionSectionHeader, MotionSectionCard } from '../components/MotionUI';
 
 export const MotionSetupScreen: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const isHistory = useMotionStore(selectors.selectIsHistory);
@@ -16,6 +18,10 @@ export const MotionSetupScreen: React.FC<{ onClose: () => void }> = ({ onClose }
   const [currentGoal, setCurrentGoal] = useState(op?.currentGoal?.value || 'manutencao');
   const [weeklyAvailability, setWeeklyAvailability] = useState(String(op?.weeklyAvailability?.value || 3));
   const [trainingEnvironment, setTrainingEnvironment] = useState(op?.trainingEnvironment?.value || 'casa');
+
+  const exec = useMotionExecutionFacade();
+  const [executionModePref, setExecutionModePref] = useState<ExecutionMode>(exec.currentExecutionMode);
+  const [showAdvancedExec, setShowAdvancedExec] = useState(false);
 
   useEffect(() => {
     trackEvent(MotionEvents.PROFILE_EDIT_OPENED);
@@ -38,6 +44,7 @@ export const MotionSetupScreen: React.FC<{ onClose: () => void }> = ({ onClose }
     if (currentGoal !== op?.currentGoal?.value) trackEvent(MotionEvents.GOAL_UPDATED_LOCAL, { currentGoal });
     if (numericDays !== op?.weeklyAvailability?.value) trackEvent(MotionEvents.WEEKLY_AVAILABILITY_UPDATED_LOCAL, { weeklyAvailability: numericDays });
     if (trainingEnvironment !== op?.trainingEnvironment?.value) trackEvent(MotionEvents.TRAINING_ENVIRONMENT_UPDATED_LOCAL, { trainingEnvironment });
+    if (executionModePref !== exec.currentExecutionMode) exec.dispatchUpdateExecutionMode(executionModePref);
 
     storeActions.updateOperationalSetupLocal({
       currentGoal,
@@ -78,12 +85,14 @@ export const MotionSetupScreen: React.FC<{ onClose: () => void }> = ({ onClose }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.headerTitle}>Ajustar Perfil</Text>
-      <Text style={styles.headerSubtitle}>Providencie afinações controladas ao seu pacote tático.</Text>
+      <MotionSectionHeader 
+        title="Ajustar Perfil" 
+        subtitle="Ajustes locais ao contexto operativo." 
+      />
 
       {isHistory && (
         <View style={styles.historyBlock}>
-          <Text style={styles.historyBlockText}>Histórico: edição indisponível face a limite temporal</Text>
+          <Text style={styles.historyBlockText}>Histórico: visualização apenas de leitura</Text>
         </View>
       )}
 
@@ -118,6 +127,35 @@ export const MotionSetupScreen: React.FC<{ onClose: () => void }> = ({ onClose }
         />
       </View>
 
+      <View style={styles.formGroup}>
+        <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6}}>
+          <Text style={styles.label}>Modo de Treino</Text>
+          <TouchableOpacity onPress={() => setShowAdvancedExec(!showAdvancedExec)}>
+            <Text style={styles.advancedExecLink}>{showAdvancedExec ? 'Ocultar opções' : 'Mais opções'}</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.radioGroup}>
+          <TouchableOpacity onPress={() => setExecutionModePref('follow')} disabled={isHistory} style={[styles.radioOption, executionModePref === 'follow' && styles.radioActive, isHistory && styles.inputDisabled]}>
+             <Text style={[styles.radioText, executionModePref === 'follow' && styles.radioTextActive]}>Acompanhar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setExecutionModePref('guide')} disabled={isHistory} style={[styles.radioOption, executionModePref === 'guide' && styles.radioActive, isHistory && styles.inputDisabled]}>
+             <Text style={[styles.radioText, executionModePref === 'guide' && styles.radioTextActive]}>Orientar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setExecutionModePref('hybrid')} disabled={isHistory} style={[styles.radioOption, executionModePref === 'hybrid' && styles.radioActive, isHistory && styles.inputDisabled]}>
+             <Text style={[styles.radioText, executionModePref === 'hybrid' && styles.radioTextActive]}>Misto</Text>
+          </TouchableOpacity>
+        </View>
+
+        {showAdvancedExec && (
+          <View style={styles.advancedExecBox}>
+            <Text style={styles.advancedNote}>• Acompanhar: regista e conclui silenciosamente.</Text>
+            <Text style={styles.advancedNote}>• Orientar: conduz por blocos com prompts.</Text>
+            <Text style={styles.advancedNote}>• Misto: orienta quando necessário e abstrai-se de microgerir.</Text>
+            <Text style={[styles.advancedNote, { marginTop: 8, fontStyle: 'italic', color: '#9ca3af' }]}>* A captação de hardware é ativada se autorizada e sempre sugerida via recomendação visual na sessão.</Text>
+          </View>
+        )}
+      </View>
+
       <View style={styles.actionContainer}>
         <TouchableOpacity 
           onPress={onClose} 
@@ -131,7 +169,7 @@ export const MotionSetupScreen: React.FC<{ onClose: () => void }> = ({ onClose }
           disabled={isHistory}
           style={[styles.saveButton, isHistory && styles.saveButtonDisabled]}
         >
-          <Text style={styles.saveButtonText}>Aplicar Ajuste Orgânico</Text>
+          <Text style={styles.saveButtonText}>Guardar Alterações</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -149,19 +187,7 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 8,
     elevation: 2,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginBottom: 20,
   },
   historyBlock: {
     backgroundColor: '#f3f4f6',
@@ -226,5 +252,50 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 15,
     fontWeight: '600',
+  },
+  advancedExecLink: {
+    fontSize: 12,
+    color: '#3b82f6',
+    fontWeight: '500',
+  },
+  radioGroup: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  radioOption: {
+    flex: 1,
+    paddingVertical: 10,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  radioActive: {
+    borderColor: '#111827',
+    backgroundColor: '#f9fafb',
+    borderWidth: 2,
+  },
+  radioText: {
+    fontSize: 13,
+    color: '#4b5563',
+    fontWeight: '500',
+  },
+  radioTextActive: {
+    color: '#111827',
+    fontWeight: '700',
+  },
+  advancedExecBox: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: '#f9fafb',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  advancedNote: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginBottom: 4,
   }
 });

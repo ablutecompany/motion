@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-nati
 import { useMotionStore, storeActions, selectors } from '../../store/useMotionStore';
 import { MotionDemoBanner, MotionHistoryContextBanner, MotionPermissionsBanner } from '../components/MotionBanners';
 import { adaptShellContext } from '../../integration/shellContextAdapter';
+import { hostBridge } from '../../integration/hostBridge';
 import { buildMotionProfile } from '../../services/motionProfileBuilder';
 import { derivePlanFromContext } from '../../resolvers/activeAnalysisResolver';
 import { MotionHome } from './MotionHome';
@@ -42,6 +43,10 @@ export const MotionRoot: React.FC<MotionRootProps> = ({ rawShellContext }) => {
         activeContext: adapted.activeContext,
         permissions: adapted.permissions
       });
+      
+      // Validações concluídas, manifest injetado e bridge disponível. Anuncia ciclo.
+      hostBridge.notifyAppReady();
+
     } catch (err: any) {
       setError(err.message);
       trackEvent(MotionEvents.FALLBACK_SHOWN, { reason: err.message });

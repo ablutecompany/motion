@@ -1,8 +1,9 @@
 import { MotionContribution } from '../contracts/types';
 import { trackEvent, MotionEvents } from '../analytics/events';
+import { hostBridge } from '../integration/hostBridge';
 
 export type WritebackResult = 
-  | { success: true }
+  | { success: true; feedback?: import('../contracts/types').WorkoutWellnessFeedback }
   | { success: false; reason: 'blocked_demo' | 'blocked_history' | 'blocked_permissions' | 'transmission_error' };
 
 export const writebackService = {
@@ -35,10 +36,12 @@ export const writebackService = {
     }
 
     try {
-      // TODO: Connector de transação passivo - substitui este mock quando conectarmos a ponte nativa
-      console.log('[WRITEBACK SERVICE] Operação autorizada:', contribution);
+      // O hostBridge V1 não é assincrono, mantemos assim.
+      // Preparamos o result para quando a infra permitir retorno assíncrono.
+      hostBridge.emitContribution(contribution);
       trackEvent(MotionEvents.WRITEBACK_SENT, { type: contribution.type });
-      return { success: true };
+      
+      return { success: true, feedback: undefined }; // Ainda não há retorno real do host
     } catch (error) {
       trackEvent(MotionEvents.WRITEBACK_FAILED, { error });
       return { success: false, reason: 'transmission_error' };

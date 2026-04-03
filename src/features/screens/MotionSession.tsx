@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { useMotionStore, selectors, storeActions } from '../../store/useMotionStore';
+import { useMotionStore, selectors } from '../../store/useMotionStore';
 import { trackEvent, MotionEvents } from '../../analytics/events';
-import { writebackService } from '../../services/writebackService';
-import { MotionContribution } from '../../contracts/types';
+import { useMotionExecutionFacade } from '../../facades/useMotionExecutionFacade';
+import { WorkoutConfirmationState, WorkoutEnrichmentInput } from '../../contracts/types';
+import { MotionSectionHeader, MotionSectionCard, MotionStatusPill } from '../components/MotionUI';
 
 interface MotionSessionProps {
   explicitSessionId?: string;
@@ -18,7 +19,11 @@ export const MotionSessionScreen: React.FC<MotionSessionProps> = ({ explicitSess
   const profile = useMotionStore(selectors.selectMotionProfile);
   const universe = useMotionStore(selectors.selectUniverse);
 
+  const exec = useMotionExecutionFacade();
   const [localSyncState, setLocalSyncState] = useState<'idle' | 'syncing' | 'synced' | 'failed' | 'blocked_demo' | 'blocked_history'>('idle');
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [showMoreEnrichment, setShowMoreEnrichment] = useState(false);
+  const [enrichmentInput, setEnrichmentInput] = useState<WorkoutEnrichmentInput>({});
 
   useEffect(() => {
     trackEvent(MotionEvents.SESSION_VIEWED);
@@ -42,44 +47,42 @@ export const MotionSessionScreen: React.FC<MotionSessionProps> = ({ explicitSess
     );
   }
 
-  const handleComplete = async () => {
-    if (isHistory) {
-      setLocalSyncState('blocked_history');
-      return;
-    }
-    
-    if (!hasWritePermission && !isDemo) {
-      setLocalSyncState('failed');
-      return;
+  const uiModel = exec.selectExecutionViewModel(session.completed, showConfirmation);
+
+  const handleCompleteRequest = () => {
+    trackEvent(MotionEvents.WORKOUT_CONFIRMATION_SHOWN, { sessionId: session.id });
+    setShowConfirmation(true);
+  };
+
+  const handleConfirm = async (state: WorkoutConfirmationState) => {
+    if (state === 'dismissed' || state === 'deferred') {
+       await exec.dispatchWorkoutConfirmation(session.id, state);
+       setShowConfirmation(false);
+       if (state === 'dismissed') {
+         if (onBack) onBack();
+       }
+       return;
     }
 
     setLocalSyncState('syncing');
-    trackEvent(MotionEvents.SESSION_COMPLETE_CLICKED, { sessionId: session.id });
-
-    storeActions.markSessionCompletedLocal(session.id);
-    trackEvent(MotionEvents.SESSION_COMPLETED_LOCAL, { sessionId: session.id });
-
-    const contribution: MotionContribution = {
-      source: '_motion_app',
-      type: 'readiness_update', // Assuming placeholder type fits existing taxonomy
-      timestamp: new Date().toISOString(),
-      payload: { completedSessionId: session.id }
-    };
-
-    const result = await writebackService.attemptWriteback(contribution, isDemo, isHistory, hasWritePermission);
+    const result = await exec.dispatchWorkoutConfirmation(session.id, state);
 
     if (result.success) {
-      trackEvent(MotionEvents.WRITEBACK_SENT);
+      setLocalSyncState('synced');
+      setShowConfirmation(false);
+    } else {
+      setLocalSyncState(result.reason as any || 'failed');
+    }
+  };
+
+  const handleEnrichment = async (skip: boolean) => {
+    setLocalSyncState('syncing');
+    const result = await exec.dispatchWorkoutEnrichment(skip ? null : enrichmentInput);
+    
+    if (result.success) {
       setLocalSyncState('synced');
     } else {
-      trackEvent(MotionEvents.WRITEBACK_FAILED);
-      if (result.reason === 'blocked_demo') {
-        setLocalSyncState('blocked_demo');
-      } else if (result.reason === 'blocked_history') {
-        setLocalSyncState('blocked_history');
-      } else {
-        setLocalSyncState('failed');
-      }
+      setLocalSyncState(result.reason as any || 'failed');
     }
   };
 
@@ -94,33 +97,35 @@ export const MotionSessionScreen: React.FC<MotionSessionProps> = ({ explicitSess
 
   const renderBadge = () => {
     if (session.completed && localSyncState === 'idle') {
-      return <View style={[styles.badge, styles.badgeSuccess]}><Text style={styles.badgeTextSuccess}>Sessão concluída</Text></View>;
+      return <MotionStatusPill label="Sessão concluída" tone="success" />;
     }
+    
+    const syncDisplay = exec.getSyncDisplayState(localSyncState === 'idle' ? 'synced' : localSyncState as any);
+
     switch (localSyncState) {
-      case 'syncing': return <View style={[styles.badge, styles.badgeInfo]}><Text style={styles.badgeTextInfo}>A sincronizar conclusão</Text></View>;
-      case 'synced': return <View style={[styles.badge, styles.badgeSuccess]}><Text style={styles.badgeTextSuccess}>Conclusão registada e sincronizada</Text></View>;
-      case 'failed': return <View style={[styles.badge, styles.badgeError]}><Text style={styles.badgeTextError}>Sincronização indisponível. Registo local mantido.</Text></View>;
-      case 'blocked_demo': return <View style={[styles.badge, styles.badgeNeutral]}><Text style={styles.badgeTextNeutral}>Modo demo: conclusão apenas local</Text></View>;
-      case 'blocked_history': return <View style={[styles.badge, styles.badgeNeutral]}><Text style={styles.badgeTextNeutral}>Histórico: conclusão indisponível</Text></View>;
-      default: return <View style={[styles.badge, styles.badgeNeutral]}><Text style={styles.badgeTextNeutral}>Sessão agendada</Text></View>;
+      case 'syncing': return <MotionStatusPill label={syncDisplay.label} tone="primary" />;
+      case 'synced': return <MotionStatusPill label={syncDisplay.label} tone="success" />;
+      case 'failed': return <MotionStatusPill label="Sincronização pendente. Registo guardado." tone="error" />;
+      case 'blocked_demo': return <MotionStatusPill label="Retido no Demo" tone="warning" />;
+      case 'blocked_history': return <MotionStatusPill label="Leitura (Histórico)" tone="primary" />;
+      default: return <MotionStatusPill label="Sessão Agendada" tone="neutral" />;
     }
   };
 
   return (
-    <View style={styles.container}>
-      {onBack && (
+    <View style={[styles.container, uiModel.ambientVisible && styles.ambientContainer]}>
+      {uiModel.showDetailedUI && onBack && (
         <TouchableOpacity onPress={onBack} style={styles.backButton}>
           <Text style={styles.backButtonText}>← Regressar ao Plano</Text>
         </TouchableOpacity>
       )}
 
-      <View style={styles.card}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Execução Operacional</Text>
-          <Text style={styles.subtitle}>Instância em Análise</Text>
-        </View>
+      <MotionSectionCard>
+        <MotionSectionHeader title="Execução Operacional" subtitle="Instância em Análise" />
 
-        {renderBadge()}
+        <View style={{ marginBottom: 24 }}>
+          {renderBadge()}
+        </View>
 
         <View style={styles.contextBlock}>
           <View style={[styles.dot, { backgroundColor: getUniverseAccent(universe) }]} />
@@ -148,16 +153,158 @@ export const MotionSessionScreen: React.FC<MotionSessionProps> = ({ explicitSess
           </View>
         </View>
 
-        {!session.completed && (
-          <TouchableOpacity 
-            onPress={handleComplete} 
-            disabled={isHistory || localSyncState === 'syncing'}
-            style={[styles.completeButton, (isHistory || localSyncState === 'syncing') && styles.completeButtonDisabled]}
-          >
-            <Text style={styles.completeButtonText}>{localSyncState === 'syncing' ? 'A Aferir...' : 'Concluir sessão'}</Text>
+        {uiModel.showDetailedUI && (
+          <View style={styles.executionBox}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.executionLabel}>Contexto Tático: <Text style={{fontWeight:'700'}}>{uiModel.executionModeLabel}</Text></Text>
+              <TouchableOpacity onPress={() => exec.setAmbientMode(true)} style={styles.ambientTrigger}>
+                <Text style={styles.ambientTriggerText}>Ativar Modo Foco</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.stateSubtitle, {marginBottom: 12}]}>{uiModel.executionModeHint}</Text>
+
+            {uiModel.placementPrompt && (
+              <View style={styles.sensorBlock}>
+                <Text style={styles.sensorText}>{uiModel.placementPrompt}</Text>
+              </View>
+            )}
+            
+            {uiModel.captureNotice && (
+              <Text style={styles.stateSubtitle}>{uiModel.captureNotice}</Text>
+            )}
+          </View>
+        )}
+
+        {uiModel.ambientVisible && (
+          <TouchableOpacity onPress={() => exec.setAmbientMode(false)} style={styles.ambientResume}>
+             <Text style={styles.ambientResumeText}>Treino Ativo: {uiModel.executionModeLabel}</Text>
+             <Text style={[styles.ambientResumeText, {fontSize: 12, opacity: 0.8, marginTop: 4}]}>Tocar aqui para expandir visualização.</Text>
           </TouchableOpacity>
         )}
-      </View>
+
+        {exec.pendingEnrichmentTarget?.executionId === session.id && (
+          <View style={styles.enrichmentBox}>
+            <Text style={styles.enrichmentTitle}>Sessão Concluída e Registada</Text>
+            <Text style={styles.enrichmentSubtitle}>Para calibrar o histórico detalhado do wellness, queres adicionar mais detalhe?</Text>
+            
+            <View style={styles.enrichmentGrid}>
+               <View style={styles.optBlock}>
+                  <Text style={styles.optLabel}>Tipo de Treino Predominante (Layer 1)</Text>
+                  <View style={styles.optToggles}>
+                    {['strength', 'cardio', 'mobility'].map(val => (
+                      <TouchableOpacity 
+                        key={val} 
+                        style={[styles.optBtn, enrichmentInput.workoutType === val && styles.optBtnActive]}
+                        onPress={() => setEnrichmentInput({ ...enrichmentInput, workoutType: val as any })}
+                      >
+                         <Text style={[styles.optBtnText, enrichmentInput.workoutType === val && styles.optBtnTextActive]}>
+                           {val === 'strength' ? 'Força' : val === 'cardio' ? 'Cardio' : 'Mobilidade'}
+                         </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+               </View>
+
+               <View style={styles.optBlock}>
+                  <Text style={styles.optLabel}>Sensação de Intensidade (Layer 1)</Text>
+                  <View style={styles.optToggles}>
+                    {['light', 'moderate', 'hard'].map(val => (
+                      <TouchableOpacity 
+                        key={val} 
+                        style={[styles.optBtn, enrichmentInput.perceivedIntensity === val && styles.optBtnActive]}
+                        onPress={() => setEnrichmentInput({ ...enrichmentInput, perceivedIntensity: val as any })}
+                      >
+                         <Text style={[styles.optBtnText, enrichmentInput.perceivedIntensity === val && styles.optBtnTextActive]}>
+                           {val === 'light' ? 'Leve' : val === 'moderate' ? 'Moderada' : 'Intensa'}
+                         </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+               </View>
+
+               {showMoreEnrichment && (
+                 <>
+                   <View style={styles.optBlock}>
+                      <Text style={styles.optLabel}>Resposta Corporal (Layer 2)</Text>
+                      <View style={styles.optToggles}>
+                        {['good', 'heavy', 'stiff'].map(val => (
+                          <TouchableOpacity 
+                            key={val} 
+                            style={[styles.optBtn, enrichmentInput.feltState === val && styles.optBtnActive]}
+                            onPress={() => setEnrichmentInput({ ...enrichmentInput, feltState: val as any })}
+                          >
+                             <Text style={[styles.optBtnText, enrichmentInput.feltState === val && styles.optBtnTextActive]}>
+                               {val === 'good' ? 'Solto / Bem' : val === 'heavy' ? 'Pesado' : 'Tenso'}
+                             </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                   </View>
+                   <View style={styles.optBlock}>
+                      <Text style={styles.optLabel}>Sinais de Desconforto (Layer 2)</Text>
+                      <View style={styles.optToggles}>
+                        {['none', 'mild'].map(val => (
+                          <TouchableOpacity 
+                            key={val} 
+                            style={[styles.optBtn, enrichmentInput.discomfortReported === val && styles.optBtnActive]}
+                            onPress={() => setEnrichmentInput({ ...enrichmentInput, discomfortReported: val as any })}
+                          >
+                             <Text style={[styles.optBtnText, enrichmentInput.discomfortReported === val && styles.optBtnTextActive]}>
+                               {val === 'none' ? 'Nenhum' : 'Ligeiro'}
+                             </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                   </View>
+                 </>
+               )}
+            </View>
+
+            <View style={styles.enrichmentActions}>
+              {!showMoreEnrichment && (
+                <TouchableOpacity onPress={() => setShowMoreEnrichment(true)} style={styles.confBtn}>
+                  <Text style={styles.confBtnText}>+ Detalhe Opcional</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity onPress={() => handleEnrichment(false)} disabled={localSyncState === 'syncing' || (!enrichmentInput.perceivedIntensity && !enrichmentInput.workoutType)} style={[styles.confBtn, styles.confBtnPrimary, ((!enrichmentInput.perceivedIntensity && !enrichmentInput.workoutType) || localSyncState === 'syncing') && styles.completeButtonDisabled]}>
+                <Text style={styles.confBtnPrimaryText}>Guardar (Parcial ou Total)</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleEnrichment(true)} disabled={localSyncState === 'syncing'} style={styles.confBtn}>
+                <Text style={styles.confBtnText}>Ignorar Enriquecimento</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {uiModel.primaryTrainingState === 'active' && !exec.pendingEnrichmentTarget && (
+          <View style={styles.actionsBox}>
+            <TouchableOpacity 
+              onPress={handleCompleteRequest} 
+              disabled={isHistory || localSyncState === 'syncing'}
+              style={[styles.completeButton, (isHistory || localSyncState === 'syncing') && styles.completeButtonDisabled]}
+            >
+              <Text style={styles.completeButtonText}>{localSyncState === 'syncing' ? 'A Aferir...' : 'Concluir Treino'}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {uiModel.confirmationReady && (
+          <View style={styles.confirmationBox}>
+            <Text style={styles.confirmationTitle}>Confirmar Fecho</Text>
+            <View style={styles.confirmationActions}>
+              <TouchableOpacity onPress={() => handleConfirm('confirmed')} disabled={localSyncState === 'syncing'} style={[styles.confBtn, styles.confBtnPrimary, localSyncState === 'syncing' && styles.completeButtonDisabled]}>
+                <Text style={styles.confBtnPrimaryText}>{localSyncState === 'syncing' ? 'A Enviar...' : 'Confirmar Rescaldo'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleConfirm('deferred')} disabled={localSyncState === 'syncing'} style={styles.confBtn}>
+                <Text style={styles.confBtnText}>Deixar Pendente</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleConfirm('dismissed')} disabled={localSyncState === 'syncing'} style={styles.confBtn}>
+                <Text style={styles.confBtnText}>Cancelar Registo</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </MotionSectionCard>
     </View>
   );
 };
@@ -167,24 +314,10 @@ const styles = StyleSheet.create({
   backButton: { marginBottom: 16, alignSelf: 'flex-start', paddingVertical: 8, paddingHorizontal: 16, backgroundColor: '#f3f4f6', borderRadius: 8, borderWidth: 1, borderColor: '#e5e7eb' },
   backButtonText: { color: '#4b5563', fontSize: 14, fontWeight: '600' },
   
+  ambientContainer: { backgroundColor: '#111827' },
   emptyContainer: { padding: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f9fafb', borderRadius: 12, borderWidth: 1, borderColor: '#e5e7eb' },
   emptyTitle: { fontSize: 16, fontWeight: '600', color: '#111827', marginBottom: 8 },
   emptyDesc: { fontSize: 14, color: '#6b7280', textAlign: 'center' },
-
-  card: { backgroundColor: '#ffffff', borderRadius: 16, borderWidth: 1, borderColor: '#e5e7eb', padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 10, elevation: 2 },
-  header: { marginBottom: 16 },
-  title: { fontSize: 22, fontWeight: '800', color: '#111827', marginBottom: 4 },
-  subtitle: { fontSize: 14, color: '#6b7280', fontWeight: '500' },
-
-  badge: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, alignSelf: 'flex-start', marginBottom: 24, borderWidth: 1 },
-  badgeSuccess: { backgroundColor: '#ecfdf5', borderColor: '#10b981' },
-  badgeTextSuccess: { color: '#047857', fontSize: 13, fontWeight: '600' },
-  badgeInfo: { backgroundColor: '#eff6ff', borderColor: '#3b82f6' },
-  badgeTextInfo: { color: '#1d4ed8', fontSize: 13, fontWeight: '600' },
-  badgeError: { backgroundColor: '#fdf2f8', borderColor: '#ec4899' },
-  badgeTextError: { color: '#be185d', fontSize: 13, fontWeight: '600' },
-  badgeNeutral: { backgroundColor: '#f3f4f6', borderColor: '#9ca3af' },
-  badgeTextNeutral: { color: '#4b5563', fontSize: 13, fontWeight: '600' },
 
   contextBlock: { flexDirection: 'row', alignItems: 'center', marginBottom: 24, paddingBottom: 16, borderBottomWidth: 1, borderColor: '#f3f4f6' },
   dot: { width: 10, height: 10, borderRadius: 5, marginRight: 8 },
@@ -196,7 +329,41 @@ const styles = StyleSheet.create({
   dataLabel: { fontSize: 12, textTransform: 'uppercase', color: '#6b7280', fontWeight: '600', letterSpacing: 0.5, marginBottom: 4 },
   dataValue: { fontSize: 16, color: '#111827', fontWeight: '500' },
 
+  executionBox: { backgroundColor: '#f9fafb', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#f3f4f6', marginBottom: 24 },
+  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  executionLabel: { fontSize: 13, color: '#4b5563' },
+  ambientTrigger: { backgroundColor: '#e5e7eb', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 },
+  ambientTriggerText: { fontSize: 12, color: '#374151', fontWeight: '600' },
+  sensorBlock: { padding: 12, backgroundColor: '#eff6ff', borderRadius: 8, marginBottom: 8, borderWidth: 1, borderColor: '#bfdbfe' },
+  sensorText: { color: '#1e40af', fontSize: 13, fontWeight: '500', lineHeight: 18 },
+  stateSubtitle: { fontSize: 11, color: '#9ca3af', fontStyle: 'italic' },
+  
+  ambientResume: { backgroundColor: '#374151', padding: 24, borderRadius: 12, marginBottom: 24, alignItems: 'center', borderColor: '#4b5563', borderWidth: 1 },
+  ambientResumeText: { color: '#f3f4f6', fontSize: 14, fontWeight: '600' },
+
+  actionsBox: { flexDirection: 'column', gap: 12 },
   completeButton: { backgroundColor: '#111827', paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
   completeButtonDisabled: { backgroundColor: '#d1d5db' },
-  completeButtonText: { color: '#ffffff', fontSize: 15, fontWeight: '700' }
+  completeButtonText: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
+
+  confirmationBox: { backgroundColor: '#f9fafb', borderWidth: 1, borderColor: '#e5e7eb', padding: 16, borderRadius: 12 },
+  confirmationTitle: { fontSize: 13, fontWeight: '700', color: '#111827', marginBottom: 12, textAlign: 'center' },
+  confirmationActions: { flexDirection: 'column', gap: 8 },
+  confBtn: { paddingVertical: 12, borderRadius: 8, alignItems: 'center', backgroundColor: '#e5e7eb' },
+  confBtnPrimary: { backgroundColor: '#111827' },
+  confBtnText: { color: '#4b5563', fontSize: 14, fontWeight: '600' },
+  confBtnPrimaryText: { color: '#ffffff', fontSize: 14, fontWeight: '700' },
+
+  enrichmentBox: { backgroundColor: '#f0fdfa', borderWidth: 1, borderColor: '#ccfbf1', padding: 16, borderRadius: 12 },
+  enrichmentTitle: { fontSize: 14, fontWeight: '700', color: '#134e4a', marginBottom: 4 },
+  enrichmentSubtitle: { fontSize: 13, color: '#115e59', marginBottom: 16 },
+  enrichmentGrid: { marginBottom: 16, gap: 12 },
+  optBlock: { marginBottom: 8 },
+  optLabel: { fontSize: 12, fontWeight: '600', color: '#0f766e', marginBottom: 8 },
+  optToggles: { flexDirection: 'row', gap: 6 },
+  optBtn: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16, borderWidth: 1, borderColor: '#99f6e4', backgroundColor: '#e0f2fe' },
+  optBtnActive: { backgroundColor: '#0d9488', borderColor: '#0d9488' },
+  optBtnText: { fontSize: 12, color: '#0f766e', fontWeight: '500' },
+  optBtnTextActive: { color: '#ffffff' },
+  enrichmentActions: { flexDirection: 'column', gap: 8 }
 });

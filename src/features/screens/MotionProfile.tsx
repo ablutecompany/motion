@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useMotionStore, selectors } from '../../store/useMotionStore';
 import { trackEvent, MotionEvents } from '../../analytics/events';
 import { MotionSetupScreen } from './MotionSetup';
+import { MotionSectionHeader, MotionSectionCard, MotionStatusPill, MotionMetaRow } from '../components/MotionUI';
 
 export const MotionProfileScreen: React.FC = () => {
   const profile = useMotionStore(selectors.selectMotionProfile);
@@ -25,49 +26,32 @@ export const MotionProfileScreen: React.FC = () => {
 
   const renderBadge = () => {
     switch (syncState) {
-      case 'dirty': 
-        return <View style={[styles.badge, { backgroundColor: '#fef3c7', borderColor: '#f59e0b' }]}><Text style={[styles.badgeText, { color: '#b45309' }]}>Ajuste aplicado ao plano atual</Text></View>;
-      case 'syncing': 
-        return <View style={[styles.badge, { backgroundColor: '#eff6ff', borderColor: '#3b82f6' }]}><Text style={[styles.badgeText, { color: '#1d4ed8' }]}>A sincronizar reestruturação</Text></View>;
-      case 'synced': 
-        return <View style={[styles.badge, { backgroundColor: '#ecfdf5', borderColor: '#10b981' }]}><Text style={[styles.badgeText, { color: '#047857' }]}>Integração base consolidada</Text></View>;
-      case 'failed': 
-        return <View style={[styles.badge, { backgroundColor: '#fdf2f8', borderColor: '#ec4899' }]}><Text style={[styles.badgeText, { color: '#be185d' }]}>Sincronização indisponível. Ajuste local contido.</Text></View>;
-      case 'blocked_demo': 
-        return <View style={[styles.badge, { backgroundColor: '#f3f4f6', borderColor: '#9ca3af' }]}><Text style={[styles.badgeText, { color: '#4b5563' }]}>Modo demo: ajuste apenas local garantido</Text></View>;
-      case 'blocked_history': 
-        return <View style={[styles.badge, { backgroundColor: '#f3f4f6', borderColor: '#9ca3af' }]}><Text style={[styles.badgeText, { color: '#4b5563' }]}>Histórico: edição parametral indisponível</Text></View>;
+      case 'dirty': return <MotionStatusPill label="Ajuste aplicado ao plano atual" tone="warning" />;
+      case 'syncing': return <MotionStatusPill label="A sincronizar reestruturação" tone="primary" />;
+      case 'synced': return <MotionStatusPill label="Integração base consolidada" tone="success" />;
+      case 'failed': return <MotionStatusPill label="Sincronização indisponível. Ajuste local contido." tone="error" />;
+      case 'blocked_demo': return <MotionStatusPill label="Modo demo: ajuste apenas local garantido" tone="neutral" />;
+      case 'blocked_history': return <MotionStatusPill label="Histórico: edição parametral indisponível" tone="neutral" />;
       default: return null;
     }
   };
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Perfil Operacional</Text>
-        {renderBadge()}
-      </View>
+      <MotionSectionHeader title="Perfil Operacional" />
+      <View style={{ marginBottom: 16 }}>{renderBadge()}</View>
       
       {!isEditing && profile && (
-        <View style={styles.card}>
+        <MotionSectionCard>
           <View style={styles.universeContainer}>
             <View style={[styles.universeIndicator, { backgroundColor: getUniverseAccent(profile.universe) }]} />
             <Text style={styles.universeLabel}>{profile.universe ?? 'Matriz Inespecífica'}</Text>
           </View>
 
           <View style={styles.grid}>
-            <View style={styles.dataBlock}>
-              <Text style={styles.dataLabel}>Foco Diretor (Objetivo)</Text>
-              <Text style={styles.dataValue}>{profile.operational.currentGoal.value}</Text>
-            </View>
-            <View style={styles.dataBlock}>
-              <Text style={styles.dataLabel}>Amplitude Semanal (Disponibilidade)</Text>
-              <Text style={styles.dataValue}>{profile.operational.weeklyAvailability.value} dias de cobertura</Text>
-            </View>
-            <View style={styles.dataBlock}>
-              <Text style={styles.dataLabel}>Natureza (Ambiente Base)</Text>
-              <Text style={styles.dataValue}>{profile.operational.trainingEnvironment.value}</Text>
-            </View>
+            <MotionMetaRow label="Foco Diretor (Objetivo)" value={profile.operational.currentGoal.value} />
+            <MotionMetaRow label="Amplitude Semanal (Disponibilidade)" value={`${profile.operational.weeklyAvailability.value} dias de cobertura`} />
+            <MotionMetaRow label="Natureza (Ambiente Base)" value={profile.operational.trainingEnvironment.value} />
           </View>
           
           <TouchableOpacity 
@@ -76,7 +60,7 @@ export const MotionProfileScreen: React.FC = () => {
           >
              <Text style={styles.editButtonText}>Afinar Perímetro Operacional</Text>
           </TouchableOpacity>
-        </View>
+        </MotionSectionCard>
       )}
 
       {!isEditing && !profile && (
@@ -94,40 +78,9 @@ const styles = StyleSheet.create({
   container: {
     paddingBottom: 24,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#111827',
-  },
-  badge: {
-    borderWidth: 1,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    borderRadius: 20,
-  },
   badgeText: {
     fontSize: 12,
     fontWeight: '600',
-  },
-  card: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.03,
-    shadowRadius: 10,
-    elevation: 2,
   },
   loadingCard: {
     backgroundColor: '#f9fafb',
@@ -165,20 +118,6 @@ const styles = StyleSheet.create({
   grid: {
     gap: 16,
     marginBottom: 24,
-  },
-  dataBlock: {},
-  dataLabel: {
-    fontSize: 12,
-    textTransform: 'uppercase',
-    color: '#6b7280',
-    fontWeight: '600',
-    letterSpacing: 0.5,
-    marginBottom: 4,
-  },
-  dataValue: {
-    fontSize: 16,
-    color: '#111827',
-    fontWeight: '500',
   },
   editButton: {
     backgroundColor: '#f9fafb',
