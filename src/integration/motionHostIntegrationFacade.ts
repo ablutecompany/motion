@@ -5,13 +5,13 @@ import { motionHostFeedbackAdapter } from './motionHostFeedbackAdapter';
 
 export const motionHostIntegrationFacade = {
   // 1. Contexto Recebido
-  adaptContext: motionHostContextAdapter.adapt,
+  adaptContext: (raw?: any) => motionHostContextAdapter.adapt(raw),
 
   // 2. Transmissão Assíncrona de Contributions (Writeback)
-  attemptWriteback: motionHostWritebackAdapter.attemptWriteback,
+  attemptWriteback: (c: any, d: boolean, h: boolean, w: boolean) => motionHostWritebackAdapter.attemptWriteback(c, d, h, w),
 
   // 3. Listener Passivo de Feedback Direto
-  awaitFeedback: motionHostFeedbackAdapter.awaitFeedback,
+  awaitFeedback: (record: any) => motionHostFeedbackAdapter.awaitFeedback(record),
 
   // 4. Analytics & Core Commands
   emitOutboundEvent: (type: HostOutboundMessage['type'], payload?: any) => {

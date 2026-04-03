@@ -4,9 +4,11 @@ import { useMotionStore, selectors } from '../../store/useMotionStore';
 import { trackEvent, MotionEvents } from '../../analytics/events';
 import { MotionSessionScreen } from './MotionSession';
 import { useMotionExecutionFacade } from '../../facades/useMotionExecutionFacade';
-import { MotionSectionHeader, MotionSectionCard, MotionStatusPill } from '../components/MotionUI';
+import { MotionSurfaceCard, MotionStatusPill, MotionHeroCard } from '../components/MotionUI';
+import { useMotionTheme } from '../../theme/useMotionTheme';
 
 export const MotionPlanScreen: React.FC = () => {
+  const theme = useMotionTheme();
   const plan = useMotionStore(selectors.selectPlan);
   const phase = useMotionStore(selectors.selectPhase);
   const universe = useMotionStore(selectors.selectUniverse);
@@ -21,14 +23,6 @@ export const MotionPlanScreen: React.FC = () => {
     trackEvent(MotionEvents.PLAN_VIEWED);
   }, []);
 
-  const getUniverseAccent = (u: string | null) => {
-    switch (u) {
-      case 'Balance': return '#10b981';
-      case 'Performance Boost': return '#3b82f6';
-      case 'Momentum': return '#8b5cf6';
-      default: return '#9ca3af';
-    }
-  };
 
   const renderSyncBadge = () => {
     if (syncState === 'dirty') {
@@ -58,9 +52,9 @@ export const MotionPlanScreen: React.FC = () => {
 
   if (!plan || !plan.sessions || plan.sessions.length === 0) {
     return (
-      <View style={styles.emptyContainer}>
-        <Text style={styles.emptyTitle}>Plano em estruturação</Text>
-        <Text style={styles.emptyDesc}>A aguardar derivação operativa baseada no perfil atual.</Text>
+      <View style={[styles.emptyContainer, { borderColor: theme.colors.border, backgroundColor: theme.colors.cardBg }]}>
+        <Text style={[theme.typography.title, { marginBottom: 8 }]}>Plano em estruturação</Text>
+        <Text style={[theme.typography.body, { color: theme.colors.textSecondary, textAlign: 'center' }]}>A aguardar derivação operativa baseada no perfil atual.</Text>
       </View>
     );
   }
@@ -69,81 +63,83 @@ export const MotionPlanScreen: React.FC = () => {
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <MotionSectionHeader 
-        title="Plano Corrente" 
-        subtitle={phase ? `Fase de ${phase}` : 'Diretiva em aberto'} 
-      />
-      <View style={{ marginBottom: 20 }}>
-        {renderSyncBadge()}
-      </View>
+      <MotionHeroCard 
+        overline="Visão Angular"
+        title="Plano Delineado" 
+        subtitle={phase ? `Foco predominante: ${phase}` : 'Diretiva em aberto'} 
+      >
+        <View style={{ marginBottom: 8 }}>
+          {renderSyncBadge()}
+        </View>
+      </MotionHeroCard>
 
-      <MotionSectionCard>
+      <MotionSurfaceCard level="high" style={{ marginBottom: 32 }}>
         <View style={styles.contextHeader}>
-          <View style={[styles.dot, { backgroundColor: getUniverseAccent(universe) }]} />
-          <Text style={styles.contextTitle}>Contexto Tático Vigente</Text>
+          <View style={[styles.dot, { backgroundColor: theme.colors.accent }]} />
+          <Text style={theme.typography.title}>Eixo Diretor Vigente</Text>
         </View>
         <View style={styles.contextGrid}>
           <View style={styles.contextItem}>
-            <Text style={styles.contextLabel}>Foco Diretor</Text>
-            <Text style={styles.contextValue}>{op?.currentGoal?.value ?? '-'}</Text>
+            <Text style={theme.typography.label}>Foco</Text>
+            <Text style={[theme.typography.body, {fontWeight: '700'}]}>{op?.currentGoal?.value ?? '-'}</Text>
           </View>
           <View style={styles.contextItem}>
-            <Text style={styles.contextLabel}>Disponibilidade</Text>
-            <Text style={styles.contextValue}>{op?.weeklyAvailability?.value ? `${op.weeklyAvailability.value} dias` : '-'}</Text>
+            <Text style={theme.typography.label}>Disponibilidade</Text>
+            <Text style={[theme.typography.body, {fontWeight: '700'}]}>{op?.weeklyAvailability?.value ? `${op.weeklyAvailability.value} dias` : '-'}</Text>
           </View>
           <View style={styles.contextItem}>
-            <Text style={styles.contextLabel}>Ambiente</Text>
-            <Text style={styles.contextValue}>{op?.trainingEnvironment?.value ?? '-'}</Text>
+            <Text style={theme.typography.label}>Ambiente</Text>
+            <Text style={[theme.typography.body, {fontWeight: '700'}]}>{op?.trainingEnvironment?.value ?? '-'}</Text>
           </View>
         </View>
 
         <View style={styles.execSummaryBox}>
-           <Text style={styles.execSummaryTitle}>Preferência: {getExecutionCardCopy().title}</Text>
-           <Text style={styles.execSummaryDesc}>{getExecutionCardCopy().desc}</Text>
-           <Text style={styles.execSummaryMicro}>* Preparado para modo discreto ou captura de integridade nativa, quando aplicável pela Sessão.</Text>
+           <Text style={[theme.typography.body, {fontWeight: '700', color: theme.colors.textMain}]}>Modo preferencial: {getExecutionCardCopy().title}</Text>
+           <Text style={[theme.typography.body, { color: theme.colors.textSecondary, marginTop: 4 }]}>{getExecutionCardCopy().desc}</Text>
+           <Text style={[theme.typography.caption, { marginTop: 8 }]}>* Suporta adaptação discreta via Hardware Tracking passivo quando relevante.</Text>
         </View>
-      </MotionSectionCard>
+      </MotionSurfaceCard>
 
-      <Text style={styles.listSectionTitle}>Instâncias Operacionais ({plan.sessions.length})</Text>
+      <Text style={[theme.typography.title, { marginBottom: 16 }]}>Instâncias Operacionais ({plan.sessions.length})</Text>
 
       {plan.sessions.map((session, index) => (
         <TouchableOpacity 
           key={session.id} 
-          style={styles.sessionCard}
+          style={[styles.sessionCard, { backgroundColor: theme.colors.cardBg, borderColor: theme.colors.border, borderRadius: theme.metrics.radiusCard }]}
           onPress={() => setSelectedSessionId(session.id)}
           activeOpacity={0.8}
         >
           <View style={styles.sessionHeader}>
-            <Text style={styles.sessionTitle}>Sessão {index + 1}</Text>
+            <Text style={theme.typography.title}>Módulo {index + 1}</Text>
             {session.completed ? (
-              <View style={styles.tagCompleted}><Text style={styles.tagCompletedText}>Concluída</Text></View>
+              <View style={[styles.tagCompleted, { backgroundColor: theme.colors.successBg }]}><Text style={{ color: theme.colors.success, fontSize: 12, fontWeight: '700' }}>Concluída</Text></View>
             ) : (
-              <View style={styles.tagPending}><Text style={styles.tagPendingText}>Agendada</Text></View>
+              <View style={[styles.tagPending, { backgroundColor: theme.colors.pageBg }]}><Text style={{ color: theme.colors.textSecondary, fontSize: 12, fontWeight: '700' }}>Agendada</Text></View>
             )}
           </View>
           
           <View style={styles.sessionDetails}>
             <View style={styles.detailBlock}>
-              <Text style={styles.detailLabel}>Duração Base</Text>
-              <Text style={styles.detailValue}>{session.durationMinutes} min</Text>
+              <Text style={theme.typography.label}>Duração Predita</Text>
+              <Text style={[theme.typography.body, {fontWeight: '700'}]}>{session.durationMinutes} min</Text>
             </View>
             <View style={styles.detailBlock}>
-              <Text style={styles.detailLabel}>Intensidade Relativa</Text>
-              <Text style={styles.detailValue}>{session.intensityMultiplier}x</Text>
+              <Text style={theme.typography.label}>Intensidade Base</Text>
+              <Text style={[theme.typography.body, {fontWeight: '700'}]}>{session.intensityMultiplier}x</Text>
             </View>
           </View>
 
           {/* Execution Readiness Signal */}
-          <View style={styles.readinessBox}>
-            <Text style={styles.readinessText}>A aguardar aprovação em modo {exec.currentExecutionMode.toUpperCase()}</Text>
+          <View style={[styles.readinessBox, { backgroundColor: theme.colors.pageBg }]}>
+            <Text style={[theme.typography.caption, { color: theme.colors.textMain, fontWeight: '600' }]}>Formato ativo de execução: {exec.currentExecutionMode.toUpperCase()}</Text>
             {exec.getPlacementCopy('corrida_base', 0.8).copy.showPlacement && (
-              <Text style={styles.readinessSubtext}>✓ Hardware Tracking disponível para este bloco</Text>
+              <Text style={[theme.typography.caption, { color: theme.colors.primary, marginTop: 4 }]}>✓ Hardware Tracking Elegível</Text>
             )}
           </View>
 
           <View style={styles.cardFooter}>
             <Text style={styles.sessionIdText}>Ref: {session.id.split('-').pop()}</Text>
-            <Text style={styles.actionText}>{session.completed || isHistory ? 'Visualizar detalhe →' : 'Abrir Sessão →'}</Text>
+            <Text style={[theme.typography.body, { color: theme.colors.primary, fontWeight: '700' }]}>{session.completed || isHistory ? 'Escrutinar registo →' : 'Iniciar runtime →'}</Text>
           </View>
         </TouchableOpacity>
       ))}

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>_motion | Sessão - Balance</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Outfit', 'sans-serif'] },
+                    colors: {
+                        stone: { 50: '#fafafa', 100: '#f4f5f6', 200: '#e8ecef' },
+                        sage: { 600: '#4a7c73', 800: '#2d4b45', 900: '#1a2e2a' },
+                    },
+                    borderRadius: { '4xl': '2rem', '5xl': '2.5rem' }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-stone-50 text-sage-900 font-sans antialiased min-h-screen flex justify-center pb-12">
+    <main class="w-full max-w-md bg-stone-100 relative min-h-screen shadow-xl rounded-t-[3rem] mt-4 flex flex-col">
+        
+        <header class="px-8 pt-8 pb-4 flex justify-between items-center z-10 sticky top-0 bg-stone-100/90 backdrop-blur-md rounded-t-[3rem]">
+            <h1 class="font-medium tracking-widest text-sage-800 text-sm opacity-60 uppercase">Modo de Execução</h1>
+            <button class="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center text-sage-800 border border-stone-200">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </header>
+
+        <div class="px-8 flex flex-col flex-1 pb-32 pt-4">
+            
+            <section class="mb-12 text-center mt-4">
+                <span class="text-xs uppercase tracking-widest text-sage-600 font-medium block mb-3">Estabilização</span>
+                <h2 class="text-5xl font-light text-sage-900 leading-tight mb-2">Mercurial<br><span class="font-medium">Flow</span></h2>
+                <p class="text-sage-800/60 font-light mt-4 text-sm max-w-[80%] mx-auto">Cadência focada. A respiração guia a estrutura de controlo.</p>
+            </section>
+
+            <section class="flex-1 flex flex-col justify-center">
+                <h3 class="text-xs uppercase tracking-widest text-sage-900/40 text-center mb-8 font-medium">Janela Atual</h3>
+                
+                <div class="relative px-6">
+                    <div class="absolute left-10 top-2 bottom-6 w-0.5 bg-stone-200 rounded-full"></div>
+                    
+                    <div class="flex flex-col gap-8">
+                        <div class="flex items-center gap-6 relative">
+                            <div class="w-8 h-8 rounded-full bg-sage-600/10 flex items-center justify-center z-10 shrink-0">
+                                <div class="w-2.5 h-2.5 bg-sage-600 rounded-full"></div>
+                            </div>
+                            <div class="opacity-40">
+                                <h4 class="text-sm font-medium text-sage-900">Ancoragem Inicial</h4>
+                                <span class="text-xs text-sage-800/60 block mt-1">Concluído</span>
+                            </div>
+                        </div>
+
+                        <!-- AGORA (Bloco Atual) -->
+                        <div class="flex items-center gap-6 relative">
+                            <div class="w-8 h-8 rounded-full bg-sage-800 flex items-center justify-center z-10 shrink-0 shadow-lg shadow-sage-800/20 ring-4 ring-white">
+                                <div class="w-2.5 h-2.5 bg-white rounded-full animate-pulse"></div>
+                            </div>
+                            <div class="bg-white rounded-3xl p-5 shadow-sm border border-stone-200 w-full relative overflow-hidden">
+                                <div class="absolute right-0 top-0 w-24 h-24 bg-sage-600/5 rounded-bl-[100px]"></div>
+                                <span class="text-[10px] font-bold text-sage-600 uppercase tracking-widest block mb-2">Bloco Atual</span>
+                                <h4 class="text-xl font-medium text-sage-900 leading-none">Extensão Torácica</h4>
+                                <p class="text-xs text-sage-800/70 mt-3 font-light leading-relaxed">Inspiração profunda pelo diafragma ao estender. Foco absoluto na amplitude e na preservação da postura.</p>
+                            </div>
+                        </div>
+
+                        <!-- A SEGUIR -->
+                        <div class="flex items-center gap-6 relative">
+                            <div class="w-8 h-8 rounded-full bg-white border-2 border-stone-200 flex items-center justify-center z-10 shrink-0">
+                                <div class="w-2 h-2 bg-stone-300 rounded-full"></div>
+                            </div>
+                            <div class="opacity-60 pt-2">
+                                <h4 class="text-base font-medium text-sage-900">Alinhamento Neural</h4>
+                                <span class="text-xs text-sage-800/60 block mt-1">Sustentação • Preparar</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div class="absolute bottom-0 w-full px-6 py-8 bg-gradient-to-t from-stone-100 via-stone-100 to-transparent z-20">
+            <button class="w-full bg-sage-800 text-white font-medium text-lg py-5 rounded-full shadow-xl shadow-sage-800/20 tracking-wide hover:bg-sage-900 transition-colors flex justify-center items-center gap-3 group">
+                <span class="w-2 h-2 rounded-full bg-sage-400 group-hover:bg-white transition-colors"></span>
+                Continuar Bloco
+            </button>
+        </div>
+
+    </main>
+</body>
+</html>

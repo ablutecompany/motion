@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useMotionTheme } from '../../theme/useMotionTheme';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { useMotionStore, storeActions, selectors } from '../../store/useMotionStore';
 import { MotionDemoBanner, MotionHistoryContextBanner, MotionPermissionsBanner } from '../components/MotionBanners';
@@ -12,6 +13,7 @@ import { MotionPlanScreen } from './MotionPlan';
 import { MotionProgressScreen } from './MotionProgress';
 import { MotionProfileScreen } from './MotionProfile';
 import { MotionSessionScreen } from './MotionSession';
+import { MotionNeutralEntry } from './MotionNeutralEntry';
 import { trackEvent, MotionEvents } from '../../analytics/events';
 
 interface MotionRootProps {
@@ -20,8 +22,10 @@ interface MotionRootProps {
 
 export const MotionRoot: React.FC<MotionRootProps> = ({ rawShellContext }) => {
   const isBooted = useMotionStore(selectors.selectIsBooted);
+  const universe = useMotionStore(selectors.selectUniverse);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'home'|'plan'|'session'|'progress'|'profile'|'context'>('profile'); // Focado de base no Profile para testes lógicos
+  const [activeTab, setActiveTab] = useState<'home'|'plan'|'session'|'progress'|'profile'|'context'>('home'); 
+  const theme = useMotionTheme();
 
   useEffect(() => {
     try {
@@ -83,12 +87,38 @@ export const MotionRoot: React.FC<MotionRootProps> = ({ rawShellContext }) => {
   );
 
   return (
-    <View style={styles.root}>
-      <View style={styles.header}>
-        <View style={styles.brandRow}>
-          <Text style={styles.brandSubtitle}>ablute_ wellness ecossistema</Text>
-          <Text style={styles.brandTitle}>_motion app</Text>
-        </View>
+    <View style={[styles.root, { backgroundColor: theme.colors.pageBg }]}>
+      {/* HEADER PREMIUM */}
+      <View style={[styles.header, { backgroundColor: 'transparent' }]}>
+        <TouchableOpacity 
+          style={styles.brandRow} 
+          activeOpacity={0.7} 
+          onPress={() => universe && setActiveTab('home')}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {/* Kinetic Typography Trail (Efeito Subtil de Velocidade Direcional) */}
+            <View style={{ position: 'relative' }}>
+              <Text style={[theme.typography.title, { position: 'absolute', left: -5, opacity: 0.08, letterSpacing: -1, fontSize: 24, fontStyle: 'italic', fontWeight: '900', color: theme.colors.textMain }]}>_motion</Text>
+              <Text style={[theme.typography.title, { position: 'absolute', left: -2, opacity: 0.2, letterSpacing: -1, fontSize: 24, fontStyle: 'italic', fontWeight: '900', color: theme.colors.textMain }]}>_motion</Text>
+              
+              <Text style={[theme.typography.title, { letterSpacing: -1, fontSize: 24, fontStyle: 'italic', fontWeight: '900', color: theme.colors.textMain }]}>_motion</Text>
+            </View>
+
+            {universe === 'Momentum' && <View style={[styles.universeDot, { backgroundColor: theme.colors.accent }]} />}
+            {universe === 'Performance Boost' && <View style={[styles.universeDot, { backgroundColor: theme.colors.accent }]} />}
+            {universe === 'Balance' && <View style={[styles.universeDot, { backgroundColor: theme.colors.accent }]} />}
+          </View>
+        </TouchableOpacity>
+        
+        {/* Ícone de Perfil no Topo Direita */}
+        {universe && (
+          <TouchableOpacity 
+            style={[styles.profileIcon, { backgroundColor: activeTab === 'profile' ? theme.colors.primary : theme.colors.surfaceLow }]} 
+            onPress={() => setActiveTab(activeTab === 'profile' ? 'home' : 'profile')}
+          >
+            <Text style={{ color: activeTab === 'profile' ? theme.colors.ctaPrimaryText : theme.colors.primary, fontWeight: '800', fontSize: 11, letterSpacing: 1 }}>EU</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -96,24 +126,29 @@ export const MotionRoot: React.FC<MotionRootProps> = ({ rawShellContext }) => {
         <MotionHistoryContextBanner />
         <MotionPermissionsBanner />
         
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.navScroll}>
-          <View style={styles.navRow}>
-            {navTab('profile', 'Perfil Operacional')}
-            {navTab('home', 'Visão Geral')}
-            {navTab('plan', 'Plano Atual')}
-            {navTab('session', 'Sessão')}
-            {navTab('progress', 'Progresso')}
-            {navTab('context', 'Shell/Debug')}
-          </View>
-        </ScrollView>
+        {/* Pilha de Navegação: Botão Voltar genérico se não for Home */}
+        {activeTab !== 'home' && activeTab !== 'profile' && (
+           <TouchableOpacity 
+             style={[styles.backButton, { backgroundColor: theme.colors.cardBg, borderColor: theme.colors.border }]} 
+             onPress={() => setActiveTab('home')}
+           >
+             <Text style={{ color: theme.colors.textSecondary, fontWeight: '600' }}>← Voltar à Visão Geral</Text>
+           </TouchableOpacity>
+        )}
 
         <View style={styles.contentArea}>
-          {activeTab === 'profile' && <MotionProfileScreen />}
-          {activeTab === 'home' && <MotionHome />}
-          {activeTab === 'plan' && <MotionPlanScreen />}
-          {activeTab === 'session' && <MotionSessionScreen />}
-          {activeTab === 'progress' && <MotionProgressScreen />}
-          {activeTab === 'context' && <MotionContextScreen />}
+          {!universe ? (
+            <MotionNeutralEntry />
+          ) : (
+            <>
+              {activeTab === 'home' && <MotionHome onNavigate={(t: any) => setActiveTab(t)} />}
+              {activeTab === 'profile' && <MotionProfileScreen />}
+              {activeTab === 'plan' && <MotionPlanScreen />}
+              {activeTab === 'session' && <MotionSessionScreen />}
+              {activeTab === 'progress' && <MotionProgressScreen />}
+              {activeTab === 'context' && <MotionContextScreen />}
+            </>
+          )}
         </View>
       </ScrollView>
     </View>
@@ -123,62 +158,51 @@ export const MotionRoot: React.FC<MotionRootProps> = ({ rawShellContext }) => {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#f3f4f6', 
   },
   header: {
-    backgroundColor: '#ffffff',
-    paddingVertical: 18,
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
-    borderColor: '#e5e7eb',
+    paddingVertical: 24,
+    paddingHorizontal: 24,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  universeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginLeft: 6,
+    marginTop: 6
   },
   brandRow: {
     flexDirection: 'column',
   },
   brandSubtitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#9ca3af',
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
-    marginBottom: 4,
-  },
-  brandTitle: {
-    fontSize: 22,
+    fontSize: 10,
     fontWeight: '800',
-    color: '#111827',
-    letterSpacing: -0.5,
+    textTransform: 'uppercase',
+    letterSpacing: 2,
+    marginBottom: 2
   },
   scrollContent: {
-    padding: 16,
-  },
-  navScroll: {
-    marginBottom: 20,
-  },
-  navRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingBottom: 4, 
-  },
-  tab: {
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
+    paddingBottom: 40
+  },
+  backButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 30,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    alignSelf: 'flex-start',
+    marginBottom: 24
   },
-  tabActive: {
-    backgroundColor: '#111827',
-    borderColor: '#111827',
-  },
-  tabText: {
-    color: '#4b5563',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  tabTextActive: {
-    color: '#ffffff',
+  profileIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'transparent'
   },
   contentArea: {
     paddingBottom: 40,

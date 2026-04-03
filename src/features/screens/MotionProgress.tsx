@@ -7,7 +7,7 @@ import { useMotionSyncFacade } from '../../facades/useMotionSyncFacade';
 import { useMotionTimelineFacade } from '../../facades/useMotionTimelineFacade';
 import { useMotionHostFeedbackFacade } from '../../facades/useMotionHostFeedbackFacade';
 import { generateMotionTimeline } from '../../presenters/timelinePresenter';
-import { MotionSectionHeader, MotionSectionCard, MotionStatusPill } from '../components/MotionUI';
+import { MotionSectionHeader, MotionSurfaceCard, MotionStatusPill } from '../components/MotionUI';
 import { MotionTimelineFilters, MotionTimelineAnalyticsSummary } from '../components/MotionTimelineAnalyticsViews';
 
 export const MotionProgressScreen: React.FC = () => {
@@ -107,7 +107,7 @@ export const MotionProgressScreen: React.FC = () => {
             const isExpanded = !!expandedItems[record.id];
             
             return (
-              <MotionSectionCard key={record.id} style={{ marginBottom: 12 }}>
+              <MotionSurfaceCard key={record.id} style={{ marginBottom: 12 }}>
                 <View style={styles.historyCardHeader}>
                   <MotionStatusPill label={sourceLabel} tone={record.source === 'session' ? 'primary' : 'passive'} />
                   <MotionStatusPill label={syncDisplay.label} tone={record.syncStatus === 'synced' ? 'success' : record.syncStatus === 'failed' ? 'error' : record.syncStatus === 'local_only' ? 'warning' : 'neutral'} />
@@ -197,7 +197,7 @@ export const MotionProgressScreen: React.FC = () => {
                     </View>
                   </View>
                 )}
-              </MotionSectionCard>
+              </MotionSurfaceCard>
             );
           })}
         </View>

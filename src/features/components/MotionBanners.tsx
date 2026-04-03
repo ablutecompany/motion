@@ -38,19 +38,7 @@ export const MotionHistoryContextBanner: React.FC = () => {
 };
 
 export const MotionPermissionsBanner: React.FC = () => {
-  const hasPerms = useMotionStore(selectors.selectHasWritePermission);
-  const isDemo = useMotionStore(selectors.selectIsDemo);
-  const isHistory = useMotionStore(selectors.selectIsHistory);
-
-  // Não mostra alerta de "sem permissão" se já for demo ou histórico (ambientes isolados por default)
-  if (hasPerms || isDemo || isHistory) return null;
-
-  return (
-    <View style={[styles.banner, styles.errorTheme]}>
-      <View style={styles.dotError} />
-      <Text style={[styles.text, styles.errorText]}>Permissões restritas neste contexto. Edição bloqueada.</Text>
-    </View>
-  );
+  return null;
 };
 
 const styles = StyleSheet.create({

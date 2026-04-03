@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="pt-PT" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>_motion | Home - Performance Boost</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { 
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'monospace']
+                    },
+                    colors: {
+                        navy: { 900: '#060a11', 800: '#0b1323', 700: '#131c2b', 600: '#1c283a' },
+                        cyan: { glow: '#00e5ff', muted: '#00e5ff99' }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-navy-900 text-slate-300 font-sans antialiased min-h-screen flex justify-center pb-12">
+    <main class="w-full max-w-md bg-navy-800 relative flex flex-col shadow-2xl min-h-screen border-x border-navy-700">
+        
+        <header class="px-6 py-6 border-b border-navy-700 flex justify-between items-center z-10 bg-navy-900">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-navy-700 border border-navy-600 rounded">
+                    <img src="https://i.pravatar.cc/100?u=perf" alt="Profile" class="w-full h-full object-cover">
+                </div>
+                <h1 class="font-mono text-white/90 uppercase tracking-widest text-sm font-bold">_MOTION</h1>
+            </div>
+            <div class="text-cyan-glow font-mono text-[10px] tracking-widest uppercase flex items-center gap-2">
+                <span class="w-1.5 h-1.5 bg-cyan-glow animate-pulse"></span> Sistema Ativo
+            </div>
+        </header>
+
+        <div class="px-5 flex flex-col gap-5 py-6 pb-20">
+            
+            <!-- Hero (Indicator: Performance Graph & Load Progression) -->
+            <section class="bg-navy-900 border border-navy-700 p-6 relative overflow-hidden backdrop-blur-sm">
+                <div class="absolute inset-0 opacity-[0.03]" style="background-image: linear-gradient(rgba(255,255,255,1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,1) 1px, transparent 1px); background-size: 20px 20px;"></div>
+                
+                <div class="flex items-center gap-3 mb-8">
+                    <div class="w-1 h-3 bg-white"></div>
+                    <span class="text-[10px] font-mono text-slate-400 tracking-[0.2em] uppercase">Evolução de Carga</span>
+                </div>
+                
+                <h2 class="text-5xl font-black text-white uppercase tracking-tighter leading-[0.9] mb-4">Execução<br><span class="text-cyan-glow">Tática</span></h2>
+                <p class="text-xs text-slate-400 font-mono leading-relaxed mb-6">Estás a sustentar um padrão superior e consistente de esforço em relação aos blocos anteriores da semana.</p>
+                
+                <div class="mt-2 flex gap-6 border-t border-navy-700 pt-5 justify-between">
+                    <div>
+                        <span class="block text-[10px] font-mono text-slate-500 uppercase mb-2">Tendência (Últ. 4 Sessões)</span>
+                        <!-- Believable Performance Graph -->
+                        <div class="flex items-end gap-1.5 h-10 w-full mb-1">
+                            <div class="w-6 h-[40%] bg-navy-600 rounded-sm"></div>
+                            <div class="w-6 h-[55%] bg-navy-600 rounded-sm"></div>
+                            <div class="w-6 h-[80%] bg-cyan-glow opacity-60 rounded-sm"></div>
+                            <div class="w-6 h-[100%] bg-cyan-glow rounded-sm shadow-[0_0_10px_rgba(0,229,255,0.4)]"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Action Grid (Stacked Precision) -->
+            <section class="flex flex-col gap-4">
+                
+                <!-- Primary Matrix: Sessão -->
+                <button class="w-full bg-cyan-glow p-1 group">
+                    <div class="bg-navy-900 w-full h-full p-6 text-left relative overflow-hidden flex flex-col justify-between min-h-[200px]">
+                        <div class="absolute -right-8 -top-8 text-cyan-glow opacity-5">
+                            <svg class="w-48 h-48" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L2 22h20L12 2zm0 4.5l6.5 13h-13L12 6.5z"/></svg>
+                        </div>
+                        
+                        <div>
+                            <span class="text-[10px] font-mono tracking-[0.3em] text-cyan-glow uppercase mb-2 block">Motor de Ação</span>
+                            <h3 class="text-3xl font-black text-white uppercase tracking-tight mb-2">Sessão</h3>
+                            <p class="text-xs font-mono text-slate-400 w-5/6">Entrar no bloco tático com mais intensidade e maior controlo focado.</p>
+                        </div>
+                        
+                        <div class="flex items-end justify-between mt-8 p-3 border-l-2 border-cyan-glow">
+                            <p class="text-xs font-mono text-slate-300 uppercase tracking-widest font-bold">Iniciar Bloco</p>
+                            <svg class="w-5 h-5 text-cyan-glow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path></svg>
+                        </div>
+                    </div>
+                </button>
+
+                <!-- Secondary Matrix: Plano -->
+                <button class="w-full bg-navy-700 p-5 text-left border border-navy-600 hover:border-slate-500 transition-colors flex items-center justify-between">
+                    <div>
+                        <span class="text-[10px] font-mono tracking-widest text-slate-400 uppercase block mb-1">Carga e Sequência</span>
+                        <h3 class="text-lg font-bold text-white uppercase tracking-wider mb-0.5">Plano Atual</h3>
+                        <p class="text-[10px] font-mono text-slate-400">Padrão do ciclo tático atual.</p>
+                    </div>
+                    <div class="w-10 h-10 border border-navy-500 rounded flex items-center justify-center text-slate-300">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 5l7 7-7 7M5 5l7 7-7 7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                    </div>
+                </button>
+
+            </section>
+        </div>
+    </main>
+</body>
+</html>

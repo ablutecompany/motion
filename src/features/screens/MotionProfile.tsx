@@ -1,13 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { useMotionStore, selectors } from '../../store/useMotionStore';
+import { useMotionStore, selectors, storeActions } from '../../store/useMotionStore';
 import { trackEvent, MotionEvents } from '../../analytics/events';
 import { MotionSetupScreen } from './MotionSetup';
-import { MotionSectionHeader, MotionSectionCard, MotionStatusPill, MotionMetaRow } from '../components/MotionUI';
+import { MotionSurfaceCard, MotionStatusPill, MotionProfileIdentity, MotionUniverseSelectorCard, MotionInsightBentoCard, MotionSettingsRow } from '../components/MotionUI';
+import { useMotionTheme } from '../../theme/useMotionTheme';
 
 export const MotionProfileScreen: React.FC = () => {
   const profile = useMotionStore(selectors.selectMotionProfile);
   const syncState = useMotionStore(selectors.selectSetupSyncState);
+  const universe = useMotionStore(selectors.selectUniverse);
+  const phase = useMotionStore(selectors.selectPhase);
+  const theme = useMotionTheme();
   
   const [isEditing, setIsEditing] = useState(false);
 
@@ -15,14 +19,7 @@ export const MotionProfileScreen: React.FC = () => {
     trackEvent(MotionEvents.PROFILE_VIEWED);
   }, []);
 
-  const getUniverseAccent = (universe: string | null) => {
-    switch (universe) {
-      case 'Balance': return '#10b981'; // Green
-      case 'Performance Boost': return '#3b82f6'; // Blue
-      case 'Momentum': return '#8b5cf6'; // Purple
-      default: return '#9ca3af'; // Gray
-    }
-  };
+
 
   const renderBadge = () => {
     switch (syncState) {
@@ -38,35 +35,81 @@ export const MotionProfileScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <MotionSectionHeader title="Perfil Operacional" />
-      <View style={{ marginBottom: 16 }}>{renderBadge()}</View>
-      
       {!isEditing && profile && (
-        <MotionSectionCard>
-          <View style={styles.universeContainer}>
-            <View style={[styles.universeIndicator, { backgroundColor: getUniverseAccent(profile.universe) }]} />
-            <Text style={styles.universeLabel}>{profile.universe ?? 'Matriz Inespecífica'}</Text>
+        <>
+          <MotionProfileIdentity 
+            title="Sessão Local" 
+            subtitle="Identidade Ablute Base" 
+            universe={universe ?? 'Matriz Inespecífica'} 
+          />
+          
+          <View style={{ marginBottom: 24, alignItems: 'center' }}>{renderBadge()}</View>
+
+          <View style={{ marginBottom: 32 }}>
+             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
+               <Text style={[theme.typography.label, { color: theme.colors.textSecondary, letterSpacing: 1.5, fontSize: 11 }]}>UNIVERSO E MODO</Text>
+             </View>
+             <MotionUniverseSelectorCard 
+                title="Balance" 
+                subtitle="Orientação suave para recuperação e rotina orgânica."
+                isActive={universe === 'Balance'}
+                onPress={() => storeActions.setBootData({ universe: 'Balance' })}
+             />
+             <MotionUniverseSelectorCard 
+                title="Performance Boost" 
+                subtitle="Foco metabólico tenso de alta exigência calórica."
+                isActive={universe === 'Performance Boost'}
+                onPress={() => storeActions.setBootData({ universe: 'Performance Boost' })}
+             />
+             <MotionUniverseSelectorCard 
+                title="Momentum" 
+                subtitle="Acompanhamento fluído focado em consistência."
+                isActive={universe === 'Momentum'}
+                onPress={() => storeActions.setBootData({ universe: 'Momentum' })}
+             />
           </View>
 
-          <View style={styles.grid}>
-            <MotionMetaRow label="Foco Diretor (Objetivo)" value={profile.operational.currentGoal.value} />
-            <MotionMetaRow label="Amplitude Semanal (Disponibilidade)" value={`${profile.operational.weeklyAvailability.value} dias de cobertura`} />
-            <MotionMetaRow label="Natureza (Ambiente Base)" value={profile.operational.trainingEnvironment.value} />
+          <View style={{ flexDirection: 'row', gap: 16, marginBottom: 32 }}>
+            <MotionInsightBentoCard 
+              value={phase || '-'} 
+              label="Fase Atual" 
+            />
+            <MotionInsightBentoCard 
+              value={profile.operational.weeklyAvailability.value} 
+              label="Disponibilidade"
+              unit="dias"
+            />
           </View>
           
-          <TouchableOpacity 
-            onPress={() => setIsEditing(true)}
-            style={styles.editButton}
-          >
-             <Text style={styles.editButtonText}>Afinar Perímetro Operacional</Text>
-          </TouchableOpacity>
-        </MotionSectionCard>
+          <View style={{ flexDirection: 'row', gap: 16, marginBottom: 32 }}>
+            <MotionInsightBentoCard 
+              value={profile.operational.currentGoal.value} 
+              label="Foco Diretor" 
+            />
+            <MotionInsightBentoCard 
+              value={profile.operational.trainingEnvironment.value} 
+              label="Ambiente Base" 
+            />
+          </View>
+
+          <View style={{ marginBottom: 40 }}>
+            <Text style={[theme.typography.label, { color: theme.colors.textSecondary, letterSpacing: 1.5, fontSize: 11, marginBottom: 12, paddingHorizontal: 8 }]}>DEFINIÇÕES</Text>
+            <MotionSettingsRow 
+              label="Reconfigurar Eixo Operacional" 
+              onPress={() => setIsEditing(true)} 
+            />
+            <MotionSettingsRow 
+              label="Privacidade da Telemetria Host" 
+              onPress={() => {}} 
+            />
+          </View>
+        </>
       )}
 
       {!isEditing && !profile && (
-        <View style={styles.loadingCard}>
-          <Text style={styles.loadingText}>A mapear contexto orgânico da shell raíz...</Text>
-        </View>
+        <MotionSurfaceCard level="low" style={{ alignItems: 'center', padding: 40, marginTop: 40 }}>
+          <Text style={[theme.typography.body, { color: theme.colors.textSecondary, textAlign: 'center' }]}>A mapear contexto orgânico da shell raíz...</Text>
+        </MotionSurfaceCard>
       )}
 
       {isEditing && <MotionSetupScreen onClose={() => setIsEditing(false)} />}
@@ -77,59 +120,5 @@ export const MotionProfileScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     paddingBottom: 24,
-  },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  loadingCard: {
-    backgroundColor: '#f9fafb',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    padding: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingText: {
-    color: '#6b7280',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  universeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderColor: '#f3f4f6',
-  },
-  universeIndicator: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 10,
-  },
-  universeLabel: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  grid: {
-    gap: 16,
-    marginBottom: 24,
-  },
-  editButton: {
-    backgroundColor: '#f9fafb',
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-  },
-  editButtonText: {
-    fontWeight: '600',
-    color: '#374151',
-    fontSize: 14,
   }
 });

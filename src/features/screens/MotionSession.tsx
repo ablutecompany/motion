@@ -6,7 +6,9 @@ import { useMotionExecutionFacade } from '../../facades/useMotionExecutionFacade
 import { useMotionSyncFacade } from '../../facades/useMotionSyncFacade';
 import { useMotionExecutionRuntimeFacade } from '../../facades/useMotionExecutionRuntimeFacade';
 import { WorkoutConfirmationState, WorkoutEnrichmentInput, MotionGuidanceMode } from '../../contracts/types';
-import { MotionSectionHeader, MotionSectionCard, MotionStatusPill } from '../components/MotionUI';
+import { MotionSurfaceCard, MotionStatusPill, MotionHeroCard } from '../components/MotionUI';
+import { useMotionTheme } from '../../theme/useMotionTheme';
+import { MotionSessionPerformance } from './session/MotionSessionPerformance';
 
 interface MotionSessionProps {
   explicitSessionId?: string;
@@ -27,6 +29,7 @@ export const MotionSessionScreen: React.FC<MotionSessionProps> = ({ explicitSess
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [showMoreEnrichment, setShowMoreEnrichment] = useState(false);
   const [enrichmentInput, setEnrichmentInput] = useState<WorkoutEnrichmentInput>({});
+  const theme = useMotionTheme();
 
   useEffect(() => {
     trackEvent(MotionEvents.SESSION_VIEWED);
@@ -44,8 +47,8 @@ export const MotionSessionScreen: React.FC<MotionSessionProps> = ({ explicitSess
             <Text style={styles.backButtonText}>← Voltar ao Plano</Text>
           </TouchableOpacity>
         )}
-        <Text style={styles.emptyTitle}>Sessão indisponível</Text>
-        <Text style={styles.emptyDesc}>Não existem instâncias operacionais correlacionadas visíveis no plano corrente.</Text>
+        <Text style={[styles.emptyTitle, theme.typography.title]}>Sessão indisponível</Text>
+        <Text style={[styles.emptyDesc, theme.typography.body]}>Não existem instâncias operacionais correlacionadas visíveis no plano corrente.</Text>
       </View>
     );
   }
@@ -118,12 +121,12 @@ export const MotionSessionScreen: React.FC<MotionSessionProps> = ({ explicitSess
 
   const renderHardwareIndicators = () => {
     return (
-      <View style={styles.hwIndicators}>
-        {runtimeCore.runtimeState.wakeLockStatus === 'active' && <Text style={styles.hwText}>Ecrã ativo</Text>}
-        {runtimeCore.runtimeState.wakeLockStatus === 'unsupported' && <Text style={[styles.hwText, { color: '#9ca3af' }]}>Controlo do ecrã indisponível</Text>}
-        {runtimeCore.runtimeState.wakeLockStatus === 'failed' && <Text style={[styles.hwText, { color: '#ef4444' }]}>Falha ao manter ecrã ativo</Text>}
+      <View style={[styles.hwIndicators, { backgroundColor: theme.colors.surfaceLow, borderColor: theme.colors.border }]}>
+        {runtimeCore.runtimeState.wakeLockStatus === 'active' && <Text style={[styles.hwText, { color: theme.colors.textMain }]}>Ecrã ativo</Text>}
+        {runtimeCore.runtimeState.wakeLockStatus === 'unsupported' && <Text style={[styles.hwText, { color: theme.colors.textMuted }]}>Controlo indisponível</Text>}
+        {runtimeCore.runtimeState.wakeLockStatus === 'failed' && <Text style={[styles.hwText, { color: theme.colors.error }]}>Falha wake_lock</Text>}
 
-        <Text style={styles.hwSeparator}>•</Text>
+        <Text style={[styles.hwSeparator, { color: theme.colors.textMuted }]}>•</Text>
 
         <TouchableOpacity onPress={() => {
            let n: MotionGuidanceMode = 'silent';
@@ -131,9 +134,9 @@ export const MotionSessionScreen: React.FC<MotionSessionProps> = ({ explicitSess
            else if (runtimeCore.guidanceMode === 'text_only' && runtimeCore.runtimeState.guidanceStatus !== 'unsupported') n = 'voice_optional';
            runtimeCore.setGuidanceLevel(n);
         }}>
-          {runtimeCore.guidanceMode === 'silent' && <Text style={[styles.hwText, { color: '#9ca3af' }]}>Sem guidance</Text>}
-          {runtimeCore.guidanceMode === 'text_only' && <Text style={styles.hwText}>Guidance textual</Text>}
-          {runtimeCore.guidanceMode === 'voice_optional' && <Text style={[styles.hwText, { color: '#3b82f6' }]}>Guidance por voz</Text>}
+          {runtimeCore.guidanceMode === 'silent' && <Text style={[styles.hwText, { color: theme.colors.textMuted }]}>Sem voz</Text>}
+          {runtimeCore.guidanceMode === 'text_only' && <Text style={[styles.hwText, { color: theme.colors.textMain }]}>Somente texto</Text>}
+          {runtimeCore.guidanceMode === 'voice_optional' && <Text style={[styles.hwText, { color: theme.colors.primary }]}>Voz ativada</Text>}
         </TouchableOpacity>
       </View>
     );
@@ -141,45 +144,45 @@ export const MotionSessionScreen: React.FC<MotionSessionProps> = ({ explicitSess
 
   const renderRuntimeBlocks = () => {
     return (
-      <View style={styles.runtimeBox}>
+      <View style={[styles.runtimeBox, { backgroundColor: theme.colors.surfaceLow, borderColor: theme.colors.border }]}>
          <View style={styles.runtimeHeader}>
-            <Text style={styles.runtimeTitle}>
+            <Text style={[theme.typography.title, { fontSize: 13 }]}>
               {runtimeCore.runtimeState.sessionStatus === 'idle' ? 'Pronto a arrancar' : 
                runtimeCore.runtimeState.sessionStatus === 'paused' ? 'Pausado' : 'Em execução'}
             </Text>
             
-            {runtimeCore.runtimeState.sessionStatus === 'idle' && (
-              <TouchableOpacity onPress={runtimeCore.actions.startSession} style={styles.runtimeAction}>
-                <Text style={styles.runtimeActionText}>Iniciar Fases</Text>
+             {runtimeCore.runtimeState.sessionStatus === 'idle' && (
+              <TouchableOpacity onPress={runtimeCore.actions.startSession} style={[styles.runtimeAction, { backgroundColor: theme.colors.primaryBg, borderColor: theme.colors.outline }]}>
+                <Text style={[styles.runtimeActionText, { color: theme.colors.primary }]}>Iniciar Fases</Text>
               </TouchableOpacity>
             )}
             {runtimeCore.runtimeState.sessionStatus === 'running' && (
-              <TouchableOpacity onPress={runtimeCore.actions.pauseSession} style={[styles.runtimeAction, {backgroundColor: '#fef2f2', borderColor: '#fca5a5'}]}>
-                <Text style={[styles.runtimeActionText, {color: '#ef4444'}]}>Pausar</Text>
+              <TouchableOpacity onPress={runtimeCore.actions.pauseSession} style={[styles.runtimeAction, {backgroundColor: theme.colors.errorBg, borderColor: theme.colors.error}]}>
+                <Text style={[styles.runtimeActionText, {color: theme.colors.error}]}>Pausar</Text>
               </TouchableOpacity>
             )}
             {runtimeCore.runtimeState.sessionStatus === 'paused' && (
-               <TouchableOpacity onPress={runtimeCore.actions.resumeSession} style={[styles.runtimeAction, {backgroundColor: '#ecfdf5', borderColor: '#a7f3d0'}]}>
-                 <Text style={[styles.runtimeActionText, {color: '#10b981'}]}>Retomar</Text>
+               <TouchableOpacity onPress={runtimeCore.actions.resumeSession} style={[styles.runtimeAction, {backgroundColor: theme.colors.successBg, borderColor: theme.colors.success}]}>
+                 <Text style={[styles.runtimeActionText, {color: theme.colors.success}]}>Retomar</Text>
                </TouchableOpacity>
             )}
          </View>
 
-         {runtimeCore.runtimeState.sessionStatus !== 'idle' && (
-           <View style={styles.blocksList}>
+          {runtimeCore.runtimeState.sessionStatus !== 'idle' && (
+           <View style={[styles.blocksList, { borderTopColor: theme.colors.border }]}>
              {runtimeCore.blocks.map((b) => (
-                <View key={b.blockId} style={[styles.blockItem, b.status === 'active' && styles.blockItemActive]}>
+                <View key={b.blockId} style={[styles.blockItem, { borderBottomColor: theme.colors.border }]}>
                    <View>
-                     <Text style={[styles.blockTitle, b.status === 'active' && {color: '#2563eb'}]}>{b.title}</Text>
+                     <Text style={[styles.blockTitle, { color: b.status === 'active' ? theme.colors.primary : theme.colors.textSecondary }]}>{b.title}</Text>
                      {(runtimeCore.guidanceMode === 'text_only' || runtimeCore.guidanceMode === 'voice_optional') && b.status === 'active' && b.guidanceText && (
-                        <Text style={styles.blockGuidance}>{b.guidanceText}</Text>
+                        <Text style={[styles.blockGuidance, { color: theme.colors.textMuted }]}>{b.guidanceText}</Text>
                      )}
                    </View>
                    {b.status === 'active' && (
-                     <Text style={styles.blockStatus}>Bloco atual</Text>
+                     <Text style={[styles.blockStatus, { backgroundColor: theme.colors.primaryBg, color: theme.colors.primary }]}>Bloco atual</Text>
                    )}
                    {b.status === 'upcoming' && (
-                     <Text style={styles.blockStatusOff}>Prox</Text>
+                     <Text style={[styles.blockStatusOff, { color: theme.colors.textMuted }]}>Prox</Text>
                    )}
                 </View>
              ))}
@@ -189,202 +192,56 @@ export const MotionSessionScreen: React.FC<MotionSessionProps> = ({ explicitSess
     );
   };
 
+  // ROUTER LOGIC: Delegamos a visualização total consoante o Universo.
+  if (universe === 'Performance Boost') {
+    return (
+      <MotionSessionPerformance 
+        session={session} 
+        runtimeCore={runtimeCore} 
+        uiModel={uiModel} 
+        onComplete={handleCompleteRequest} 
+        onBack={onBack}
+      />
+    );
+  }
+
+  // Falback para as outras visões ou legacy se necessário
   return (
-    <View style={[styles.container, uiModel.ambientVisible && styles.ambientContainer]}>
+    <View style={[styles.container, uiModel.ambientVisible && { backgroundColor: theme.colors.pageBg }]}>
       {uiModel.showDetailedUI && onBack && (
-        <TouchableOpacity onPress={onBack} style={styles.backButton}>
-          <Text style={styles.backButtonText}>← Regressar ao Plano</Text>
+        <TouchableOpacity onPress={onBack} style={[styles.backButton, { backgroundColor: theme.colors.surfaceLow, borderColor: theme.colors.border }]}>
+          <Text style={[theme.typography.label, { color: theme.colors.textSecondary, textTransform: 'none' }]}>← Regressar ao Plano</Text>
         </TouchableOpacity>
       )}
 
-      <MotionSectionCard>
-        <MotionSectionHeader title="Execução Operacional" subtitle="Instância em Análise" />
+      {/* Legacy fallback Session block... */}
+      <MotionHeroCard
+        overline="Execução Dinâmica"
+        title={session.id === 's1' ? 'Módulo Tático' : 'Sessão Ativa'}
+        subtitle={profile?.operational?.currentGoal?.value ?? 'Foco Base'}
+      >
+         <Text style={{color: theme.colors.textSecondary, marginTop: 12}}>A utilizar fallback genérico.</Text>
+      </MotionHeroCard>
 
-        <View style={{ marginBottom: 24 }}>
-          {renderBadge()}
-        </View>
-
-        <View style={styles.contextBlock}>
-          <View style={[styles.dot, { backgroundColor: getUniverseAccent(universe) }]} />
-          <Text style={styles.contextText}>Eixo {universe ?? 'Universal'}</Text>
-          <Text style={styles.contextSeparator}>•</Text>
-          <Text style={styles.contextText}>{profile?.operational?.currentGoal?.value ?? 'Foco Base'}</Text>
-        </View>
-
-        <View style={styles.grid}>
-          <View style={styles.dataBlock}>
-            <Text style={styles.dataLabel}>Duração Prevista</Text>
-            <Text style={styles.dataValue}>{session.durationMinutes} min</Text>
-          </View>
-          <View style={styles.dataBlock}>
-            <Text style={styles.dataLabel}>Intensidade</Text>
-            <Text style={styles.dataValue}>{session.intensityMultiplier}x</Text>
-          </View>
-          <View style={styles.dataBlock}>
-            <Text style={styles.dataLabel}>Ambiente</Text>
-            <Text style={styles.dataValue}>{profile?.operational?.trainingEnvironment?.value ?? 'Não especificado'}</Text>
-          </View>
-          <View style={styles.dataBlock}>
-            <Text style={styles.dataLabel}>Referência ID</Text>
-            <Text style={[styles.dataValue, { fontFamily: 'monospace', fontSize: 13 }]}>{session.id.split('-').pop()}</Text>
-          </View>
-        </View>
-
-        {uiModel.showDetailedUI && (
-          <View style={styles.executionBox}>
-            <View style={styles.rowBetween}>
-              <Text style={styles.executionLabel}>Contexto Tático: <Text style={{fontWeight:'700'}}>{uiModel.executionModeLabel}</Text></Text>
-              <TouchableOpacity onPress={() => exec.setAmbientMode(true)} style={styles.ambientTrigger}>
-                <Text style={styles.ambientTriggerText}>Ativar Modo Foco</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={[styles.stateSubtitle, {marginBottom: 12}]}>{uiModel.executionModeHint}</Text>
-
-            {renderHardwareIndicators()}
-            {renderRuntimeBlocks()}
-
-            {uiModel.placementPrompt && (
-              <View style={styles.sensorBlock}>
-                <Text style={styles.sensorText}>{uiModel.placementPrompt}</Text>
-              </View>
-            )}
-            
-            {uiModel.captureNotice && (
-              <Text style={styles.stateSubtitle}>{uiModel.captureNotice}</Text>
-            )}
-          </View>
-        )}
-
-        {uiModel.ambientVisible && (
-          <TouchableOpacity onPress={() => exec.setAmbientMode(false)} style={styles.ambientResume}>
-             <Text style={styles.ambientResumeText}>Treino Ativo: {uiModel.executionModeLabel}</Text>
-             <Text style={[styles.ambientResumeText, {fontSize: 12, opacity: 0.8, marginTop: 4}]}>Tocar aqui para expandir visualização.</Text>
-          </TouchableOpacity>
-        )}
-
-        {exec.pendingEnrichmentTarget?.executionId === session.id && (
-          <View style={styles.enrichmentBox}>
-            <Text style={styles.enrichmentTitle}>Sessão Concluída e Registada</Text>
-            <Text style={styles.enrichmentSubtitle}>Para calibrar o histórico detalhado do wellness, queres adicionar mais detalhe?</Text>
-            
-            <View style={styles.enrichmentGrid}>
-               <View style={styles.optBlock}>
-                  <Text style={styles.optLabel}>Tipo de Treino Predominante (Layer 1)</Text>
-                  <View style={styles.optToggles}>
-                    {['strength', 'cardio', 'mobility'].map(val => (
-                      <TouchableOpacity 
-                        key={val} 
-                        style={[styles.optBtn, enrichmentInput.workoutType === val && styles.optBtnActive]}
-                        onPress={() => setEnrichmentInput({ ...enrichmentInput, workoutType: val as any })}
-                      >
-                         <Text style={[styles.optBtnText, enrichmentInput.workoutType === val && styles.optBtnTextActive]}>
-                           {val === 'strength' ? 'Força' : val === 'cardio' ? 'Cardio' : 'Mobilidade'}
-                         </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-               </View>
-
-               <View style={styles.optBlock}>
-                  <Text style={styles.optLabel}>Sensação de Intensidade (Layer 1)</Text>
-                  <View style={styles.optToggles}>
-                    {['light', 'moderate', 'hard'].map(val => (
-                      <TouchableOpacity 
-                        key={val} 
-                        style={[styles.optBtn, enrichmentInput.perceivedIntensity === val && styles.optBtnActive]}
-                        onPress={() => setEnrichmentInput({ ...enrichmentInput, perceivedIntensity: val as any })}
-                      >
-                         <Text style={[styles.optBtnText, enrichmentInput.perceivedIntensity === val && styles.optBtnTextActive]}>
-                           {val === 'light' ? 'Leve' : val === 'moderate' ? 'Moderada' : 'Intensa'}
-                         </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-               </View>
-
-               {showMoreEnrichment && (
-                 <>
-                   <View style={styles.optBlock}>
-                      <Text style={styles.optLabel}>Resposta Corporal (Layer 2)</Text>
-                      <View style={styles.optToggles}>
-                        {['good', 'heavy', 'stiff'].map(val => (
-                          <TouchableOpacity 
-                            key={val} 
-                            style={[styles.optBtn, enrichmentInput.feltState === val && styles.optBtnActive]}
-                            onPress={() => setEnrichmentInput({ ...enrichmentInput, feltState: val as any })}
-                          >
-                             <Text style={[styles.optBtnText, enrichmentInput.feltState === val && styles.optBtnTextActive]}>
-                               {val === 'good' ? 'Solto / Bem' : val === 'heavy' ? 'Pesado' : 'Tenso'}
-                             </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                   </View>
-                   <View style={styles.optBlock}>
-                      <Text style={styles.optLabel}>Sinais de Desconforto (Layer 2)</Text>
-                      <View style={styles.optToggles}>
-                        {['none', 'mild'].map(val => (
-                          <TouchableOpacity 
-                            key={val} 
-                            style={[styles.optBtn, enrichmentInput.discomfortReported === val && styles.optBtnActive]}
-                            onPress={() => setEnrichmentInput({ ...enrichmentInput, discomfortReported: val as any })}
-                          >
-                             <Text style={[styles.optBtnText, enrichmentInput.discomfortReported === val && styles.optBtnTextActive]}>
-                               {val === 'none' ? 'Nenhum' : 'Ligeiro'}
-                             </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                   </View>
-                 </>
-               )}
-            </View>
-
-            <View style={styles.enrichmentActions}>
-              {!showMoreEnrichment && (
-                <TouchableOpacity onPress={() => setShowMoreEnrichment(true)} style={styles.confBtn}>
-                  <Text style={styles.confBtnText}>+ Detalhe Opcional</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity onPress={() => handleEnrichment(false)} disabled={localSyncState === 'syncing' || (!enrichmentInput.perceivedIntensity && !enrichmentInput.workoutType)} style={[styles.confBtn, styles.confBtnPrimary, ((!enrichmentInput.perceivedIntensity && !enrichmentInput.workoutType) || localSyncState === 'syncing') && styles.completeButtonDisabled]}>
-                <Text style={styles.confBtnPrimaryText}>Guardar (Parcial ou Total)</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleEnrichment(true)} disabled={localSyncState === 'syncing'} style={styles.confBtn}>
-                <Text style={styles.confBtnText}>Ignorar Enriquecimento</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        {uiModel.primaryTrainingState === 'active' && !exec.pendingEnrichmentTarget && (
-          <View style={styles.actionsBox}>
+      <View style={{ gap: 16 }}>
+         {uiModel.primaryTrainingState === 'active' && !exec.pendingEnrichmentTarget && (
             <TouchableOpacity 
               onPress={handleCompleteRequest} 
               disabled={isHistory || localSyncState === 'syncing'}
-              style={[styles.completeButton, (isHistory || localSyncState === 'syncing') && styles.completeButtonDisabled]}
+              style={[styles.completeButton, { backgroundColor: theme.colors.primary, marginTop: 24 }, (isHistory || localSyncState === 'syncing') && { opacity: 0.5 }]}
             >
-              <Text style={styles.completeButtonText}>{localSyncState === 'syncing' ? 'A Aferir...' : 'Concluir Treino'}</Text>
+              <Text style={[styles.completeButtonText, { color: theme.colors.ctaPrimaryText }]}>{localSyncState === 'syncing' ? 'A Aferir...' : 'Concluir Treino Integral'}</Text>
             </TouchableOpacity>
-          </View>
-        )}
-
-        {uiModel.confirmationReady && (
-          <View style={styles.confirmationBox}>
-            <Text style={styles.confirmationTitle}>Confirmar Fecho</Text>
-            <View style={styles.confirmationActions}>
-              <TouchableOpacity onPress={() => handleConfirm('confirmed')} disabled={localSyncState === 'syncing'} style={[styles.confBtn, styles.confBtnPrimary, localSyncState === 'syncing' && styles.completeButtonDisabled]}>
-                <Text style={styles.confBtnPrimaryText}>{localSyncState === 'syncing' ? 'A Enviar...' : 'Confirmar Rescaldo'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleConfirm('deferred')} disabled={localSyncState === 'syncing'} style={styles.confBtn}>
-                <Text style={styles.confBtnText}>Deixar Pendente</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleConfirm('dismissed')} disabled={localSyncState === 'syncing'} style={styles.confBtn}>
-                <Text style={styles.confBtnText}>Cancelar Registo</Text>
+         )}
+         
+         {uiModel.confirmationReady && (
+            <View style={{marginTop: 24, padding: 16, borderWidth: 1, borderColor: theme.colors.border}}>
+              <TouchableOpacity onPress={() => handleConfirm('confirmed')} style={[styles.confBtn, { backgroundColor: theme.colors.primary }]}>
+                <Text style={{color: theme.colors.ctaPrimaryText}}>Guardar Rumo</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        )}
-      </MotionSectionCard>
+         )}
+      </View>
     </View>
   );
 };

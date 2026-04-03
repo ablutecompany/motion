@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>_motion | Perfil - Balance</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Outfit', 'sans-serif'] },
+                    colors: {
+                        stone: { 50: '#fafafa', 100: '#f4f5f6', 200: '#e8ecef', 300: '#d5dadd' },
+                        sage: { 400: '#6b9c92', 600: '#4a7c73', 800: '#2d4b45', 900: '#1a2e2a' },
+                    },
+                    borderRadius: { '4xl': '2rem', '5xl': '2.5rem' }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-stone-50 text-sage-900 font-sans antialiased min-h-screen flex justify-center pb-12">
+    <main class="w-full max-w-md bg-stone-100 relative min-h-screen shadow-xl flex flex-col">
+        
+        <header class="px-8 pt-12 pb-6 text-center z-10 relative">
+            <div class="absolute left-1/2 top-4 w-32 h-32 bg-white rounded-full blur-2xl -translate-x-1/2 z-0"></div>
+            
+            <div class="relative z-10">
+                <div class="w-24 h-24 mx-auto bg-stone-200 rounded-full p-1 mb-4 shadow-sm border border-white">
+                    <img src="https://i.pravatar.cc/150?u=balance2" alt="Avatar" class="w-full h-full rounded-full object-cover">
+                </div>
+                <h1 class="text-3xl font-medium text-sage-900">Hugo Silva</h1>
+                <span class="inline-block mt-2 px-4 py-1.5 bg-sage-600/10 text-sage-800 rounded-full text-xs uppercase tracking-widest font-medium">
+                    Contexto Local
+                </span>
+            </div>
+        </header>
+
+        <div class="px-6 flex flex-col flex-1 pb-12 gap-8">
+            
+            <section>
+                <h2 class="text-xs uppercase tracking-widest text-sage-800/50 ml-4 mb-4 font-medium">Modo Atual</h2>
+                
+                <div class="bg-white rounded-[2.5rem] p-2 shadow-sm border border-stone-200/50">
+                    <div class="bg-sage-800 rounded-[2rem] p-6 text-white relative overflow-hidden shadow-md">
+                        <div class="absolute -right-8 -top-8 w-32 h-32 bg-white/5 rounded-full blur-2xl"></div>
+                        <div class="flex justify-between items-center mb-6">
+                            <span class="w-8 h-8 flex items-center justify-center bg-white/10 rounded-full">
+                                <div class="w-2 h-2 bg-white rounded-full"></div>
+                            </span>
+                            <span class="text-[10px] uppercase tracking-widest font-medium bg-white/20 px-3 py-1 rounded-full">Ativo</span>
+                        </div>
+                        <h3 class="text-2xl font-light mb-1">Regeneração e<br><span class="font-medium">Equilíbrio</span></h3>
+                    </div>
+
+                    <div class="mt-2 flex flex-col gap-1 px-4 pb-2 pt-2">
+                        <button class="flex items-center gap-4 py-4 px-2 group text-left">
+                            <span class="w-2 h-2 bg-stone-300 rounded-full group-hover:bg-sage-400 transition-colors"></span>
+                            <div>
+                                <span class="block text-sm font-medium text-sage-900 group-hover:translate-x-1 transition-transform">Performance Operacional</span>
+                            </div>
+                        </button>
+                        <div class="h-px w-full bg-stone-100"></div>
+                        <button class="flex items-center gap-4 py-4 px-2 group text-left">
+                            <span class="w-2 h-2 bg-stone-300 rounded-full group-hover:bg-sage-400 transition-colors"></span>
+                            <div>
+                                <span class="block text-sm font-medium text-sage-900 group-hover:translate-x-1 transition-transform">Impulso Fluido</span>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <section>
+                <h2 class="text-xs uppercase tracking-widest text-sage-800/50 ml-4 mb-4 font-medium">Contexto Funcional</h2>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-white rounded-4xl p-6 shadow-sm border border-stone-200/50 flex flex-col justify-between aspect-square">
+                        <span class="text-xs uppercase tracking-widest text-sage-400 font-medium pb-2 border-b border-stone-100">Fase Atual</span>
+                        <div class="mt-auto">
+                            <span class="text-2xl font-medium text-sage-900 leading-none block">Recuperação</span>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white rounded-4xl p-6 shadow-sm border border-stone-200/50 flex flex-col justify-between aspect-square">
+                        <span class="text-xs uppercase tracking-widest text-sage-400 font-medium pb-2 border-b border-stone-100">Ambiente</span>
+                        <div class="mt-auto">
+                            <span class="text-2xl font-light text-sage-900 leading-none block">Exterior<br><span class="font-medium text-lg text-sage-600 mt-1 block">Jardim</span></span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </main>
+</body>
+</html>

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="pt-PT" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>_motion | Sessão - Performance Boost</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'], mono: ['"JetBrains Mono"', 'monospace'] },
+                    colors: {
+                        navy: { 900: '#060a11', 800: '#0b1323', 700: '#131c2b', 600: '#1c283a' },
+                        cyan: { glow: '#00e5ff', muted: '#00e5ff99' }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-navy-900 text-slate-300 font-sans antialiased min-h-screen flex justify-center pb-12">
+    <main class="w-full max-w-md bg-navy-800 relative flex flex-col shadow-2xl min-h-screen border-x border-navy-700">
+        
+        <header class="px-6 py-5 border-b border-navy-700 flex justify-between items-center z-20 bg-navy-900/90 backdrop-blur-md sticky top-0">
+            <h1 class="font-mono text-slate-500 uppercase tracking-widest text-[10px] font-bold">Foco do Bloco</h1>
+            <div class="flex items-center gap-2 font-mono text-[10px] text-cyan-glow">
+                <span class="w-1.5 h-1.5 bg-cyan-glow animate-pulse"></span> LOCK
+            </div>
+            <button class="text-slate-400 hover:text-white transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </header>
+
+        <div class="absolute inset-0 opacity-[0.02] pointer-events-none" style="background-image: linear-gradient(rgba(255,255,255,1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,1) 1px, transparent 1px); background-size: 20px 20px;"></div>
+
+        <div class="px-5 flex flex-col gap-6 py-6 pb-32 z-10">
+            
+            <section class="border-l-2 border-cyan-glow pl-4 mb-4">
+                <span class="text-[10px] font-mono tracking-[0.3em] text-slate-400 uppercase block mb-2">Ritmo de Execução</span>
+                <h2 class="text-4xl font-black text-white uppercase tracking-tighter leading-none mb-1">Carga <br>Pesada</h2>
+                <div class="flex items-center gap-3 mt-4 text-[10px] font-mono text-cyan-glow uppercase tracking-widest">
+                    <span>Intensidade Primária</span> <span class="opacity-50">/</span> <span>Módulo 02</span>
+                </div>
+            </section>
+
+            <section class="mt-4 flex-1">
+                <div class="h-px w-full bg-navy-700 mb-8 relative">
+                    <div class="absolute left-0 top-0 w-1/4 h-full bg-cyan-glow"></div>
+                </div>
+
+                <div class="flex flex-col gap-4">
+                    <div class="flex items-stretch gap-4 opacity-30">
+                        <div class="w-10 flex flex-col items-center">
+                            <div class="w-6 h-6 border focus:border-white border-navy-500 bg-navy-700 flex items-center justify-center">
+                                <div class="w-2 h-2 bg-slate-500"></div>
+                            </div>
+                            <div class="w-px h-full bg-navy-600 my-2"></div>
+                        </div>
+                        <div class="pb-6 pt-1">
+                            <h4 class="text-xs font-mono font-bold text-white uppercase tracking-widest">Ativação Progressiva</h4>
+                            <span class="text-[10px] font-mono text-slate-400 block mt-1 uppercase">Concluído</span>
+                        </div>
+                    </div>
+
+                    <div class="flex items-stretch gap-4">
+                        <div class="w-10 flex flex-col items-center">
+                            <div class="w-6 h-6 border border-cyan-glow bg-cyan-glow/10 flex items-center justify-center shadow-[0_0_15px_rgba(0,229,255,0.4)] relative">
+                                <div class="w-2 h-2 bg-cyan-glow animate-pulse"></div>
+                                <div class="absolute -left-2 top-1/2 w-1 h-px bg-cyan-glow"></div>
+                                <div class="absolute -right-2 top-1/2 w-1 h-px bg-cyan-glow"></div>
+                            </div>
+                            <div class="w-px h-full bg-cyan-glow/30 my-2"></div>
+                        </div>
+                        <div class="bg-navy-900 border border-navy-600 w-full p-5 shadow-2xl relative">
+                            <div class="absolute top-0 right-0 w-8 h-8 overflow-hidden pointer-events-none">
+                                <div class="w-full h-full border-t-2 border-r-2 border-cyan-glow opacity-50 transform translate-x-3 -translate-y-3"></div>
+                            </div>
+
+                            <span class="text-cyan-glow font-mono text-[10px] uppercase tracking-[0.2em] mb-3 block opacity-80">> Bloco Atual</span>
+                            <h4 class="text-xl font-bold text-white uppercase tracking-wider mb-2">Tração Principal</h4>
+                            <p class="text-slate-400 text-xs leading-relaxed border-l border-navy-600 pl-3 mt-3">Sustenta o posicionamento base e mantém o nível de carga no teu alvo tático.</p>
+                        </div>
+                    </div>
+
+                    <div class="flex items-stretch gap-4">
+                        <div class="w-10 flex flex-col items-center">
+                            <div class="w-6 h-6 border border-navy-500 flex items-center justify-center">
+                                <div class="w-1 h-1 bg-navy-600"></div>
+                            </div>
+                        </div>
+                        <div class="pt-1 opacity-50">
+                            <h4 class="text-xs font-mono font-bold text-white uppercase tracking-widest mt-1">Recuperação</h4>
+                            <span class="text-[10px] font-mono text-slate-500 block mt-1 uppercase">A seguir</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div class="absolute bottom-6 w-full px-5 z-20">
+            <button class="w-full bg-cyan-glow text-navy-900 font-bold uppercase tracking-[0.2em] text-sm py-5 shadow-[0_0_20px_rgba(0,229,255,0.2)] hover:bg-white transition-colors border border-transparent hover:border-cyan-glow">
+                Iniciar Bloco
+            </button>
+        </div>
+
+    </main>
+</body>
+</html>

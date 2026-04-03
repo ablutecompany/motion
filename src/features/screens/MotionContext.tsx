@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { useMotionStore, selectors } from '../../store/useMotionStore';
 import { trackEvent, MotionEvents } from '../../analytics/events';
-import { MotionSectionHeader, MotionSectionCard, MotionMetaRow } from '../components/MotionUI';
+import { MotionSectionHeader, MotionSurfaceCard, MotionMetaRow } from '../components/MotionUI';
 
 export const MotionContextScreen: React.FC = () => {
   const isHistory = useMotionStore(selectors.selectIsHistory);
@@ -36,19 +36,19 @@ export const MotionContextScreen: React.FC = () => {
         subtitle="Enquadramento semântico e estrutural fornecido pela Shell para esta instância ativa."
       />
 
-      <MotionSectionCard style={{ marginBottom: 16 }}>
+      <MotionSurfaceCard style={{ marginBottom: 16 }}>
         <Text style={styles.sectionTitle}>Enquadramento Temporal</Text>
         <MotionMetaRow label="Modo de Resolução" value={isHistory ? 'Passado Ancorado (Read-Only)' : 'Presente (Dinâmico)'} />
         <MotionMetaRow label="Timestamp Vínculo" value={FormatDate(context.analysisDate)} />
         <MotionMetaRow label="ID Transacional" value={context.analysisId?.split('-').pop() ?? 'N/A'} />
-      </MotionSectionCard>
+      </MotionSurfaceCard>
 
-      <MotionSectionCard style={{ marginBottom: 16 }}>
+      <MotionSurfaceCard style={{ marginBottom: 16 }}>
         <Text style={styles.sectionTitle}>Estado de Interação e Permissões</Text>
         <MotionMetaRow label="Ambiente" value={isDemo ? 'Sandbox Estanque (Upload Bloqueado)' : 'Produção Real (Ativa)'} />
         <MotionMetaRow label="Elegibilidade Root" value={context.motionEligibilityStatus.toUpperCase()} />
         <MotionMetaRow label="Sincronização Integrada" value={permissions && !isDemo && !isHistory ? 'Permitida' : 'Limitada num destes fatores (Demo/Histórico/Permissão restrita)'} />
-      </MotionSectionCard>
+      </MotionSurfaceCard>
 
       {(!context.analysisId && !isDemo) && (
         <View style={styles.fallbackBox}>

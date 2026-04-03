@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>_motion | Home - Balance</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Outfit', 'sans-serif'] },
+                    colors: {
+                        stone: { 50: '#fafafa', 100: '#f4f5f6', 200: '#e8ecef' },
+                        sage: { 600: '#4a7c73', 800: '#2d4b45', 900: '#1a2e2a' },
+                        indigo: { 400: '#8c95e0', 600: '#5c65bf' }
+                    },
+                    borderRadius: { '4xl': '2rem', '5xl': '2.5rem' }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-stone-50 text-sage-900 font-sans antialiased min-h-screen flex justify-center pb-12">
+    <main class="w-full max-w-md bg-stone-100 relative flex flex-col shadow-xl min-h-screen">
+        
+        <header class="px-8 pt-10 pb-4 flex justify-between items-center z-10">
+            <h1 class="font-medium tracking-wide text-sage-800 text-lg">_MOTION</h1>
+            <div class="w-10 h-10 rounded-full bg-white shadow-sm overflow-hidden p-1 border border-stone-200">
+                <img src="https://i.pravatar.cc/100?u=balance" alt="Profile" class="w-full h-full rounded-full object-cover">
+            </div>
+        </header>
+
+        <div class="px-6 flex flex-col gap-6 pb-20">
+            
+            <!-- Hero (Indicator: Quality of Readiness / Stability) -->
+            <section class="bg-white rounded-5xl p-8 shadow-sm">
+                <div class="inline-flex items-center gap-2 px-3 py-1 bg-stone-100 rounded-full mb-6">
+                    <span class="w-2 h-2 rounded-full bg-sage-600"></span>
+                    <span class="text-xs uppercase tracking-widest text-sage-600 font-medium">Balanço Biológico</span>
+                </div>
+                <h2 class="text-4xl font-light text-sage-900 leading-tight mb-2">Presença<br><span class="font-medium">Sustentada</span></h2>
+                <p class="text-sage-800/60 font-light mt-4 leading-relaxed">O teu ritmo recente abriu espaço para uma sessão focada na estabilidade e qualidade do movimento.</p>
+                
+                <div class="mt-6 flex items-center justify-between border-t border-stone-100 pt-5">
+                    <div>
+                        <span class="block text-xs uppercase tracking-widest text-sage-400 font-medium mb-1">Índice de Prontidão</span>
+                        <span class="text-xl font-medium text-sage-800">Sustentado</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Action Grid (Asymmetric) -->
+            <section class="flex flex-col gap-4">
+                
+                <button class="w-full text-left bg-sage-800 rounded-4xl p-8 shadow-lg relative overflow-hidden group hover:bg-sage-900 transition-colors">
+                    <div class="absolute right-0 top-0 w-48 h-48 bg-white/5 rounded-full blur-3xl transform translate-x-12 -translate-y-12"></div>
+                    <span class="text-xs uppercase tracking-widest text-sage-600 font-medium block mb-8 text-white/60">Ação Imediata</span>
+                    <h3 class="text-3xl font-medium text-white mb-2">Sessão</h3>
+                    <p class="text-white/70 font-light text-sm mb-12 w-[85%] leading-relaxed">Trabalhar estabilidade, ritmo e controlo com mais margem hoje.</p>
+                    <div class="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm">
+                        <svg class="w-5 h-5 text-sage-800 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                    </div>
+                </button>
+
+                <button class="w-full text-left bg-white rounded-4xl p-8 shadow-sm relative overflow-hidden group">
+                    <span class="text-xs uppercase tracking-widest text-indigo-400 font-medium block mb-4">Contexto Global</span>
+                    <div class="flex justify-between items-end">
+                        <div>
+                            <h3 class="text-2xl font-medium text-sage-900 mb-1">Plano Atual</h3>
+                            <p class="text-sage-800/60 font-light text-sm">Ver a estrutura suave dos próximos dias.</p>
+                        </div>
+                        <div class="w-10 h-10 bg-stone-100 rounded-full flex items-center justify-center shrink-0">
+                            <span class="text-sage-900 font-medium">→</span>
+                        </div>
+                    </div>
+                </button>
+
+            </section>
+            
+        </div>
+    </main>
+</body>
+</html>

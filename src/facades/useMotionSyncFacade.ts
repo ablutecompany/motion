@@ -1,7 +1,7 @@
 import { useMotionStoreBase, useMotionStore, selectors } from '../store/useMotionStore';
 import { motionSyncReconciler } from '../services/motionSyncReconciler';
 import { motionSyncPolicy } from '../services/motionSyncPolicy';
-import { ConfirmedWorkoutRecord['syncStatus'] } from '../contracts/types';
+import { ConfirmedWorkoutRecord } from '../contracts/types';
 import { useCallback } from 'react';
 
 /**

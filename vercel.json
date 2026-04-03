@@ -1,0 +1,6 @@
+{
+  "buildCommand": "cd harness_temp && npm run build",
+  "outputDirectory": "harness_temp/dist",
+  "installCommand": "npm install && cd harness_temp && npm install",
+  "framework": "vite"
+}
