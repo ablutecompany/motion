@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Platform, 
 import { ClipboardList, Settings, Zap, BarChart2, Lightbulb, Smartphone, ChevronDown, ChevronUp } from 'lucide-react';
 import { useMotionTheme } from '../../../theme/useMotionTheme';
 import supinoBg from '../../../assets/supino_reto.png';
+import aberturaBg from '../../../assets/abertura_plana.png';
 import { useMotionStore, selectors } from '../../../store/useMotionStore';
 import { useMotionExecutionRuntimeFacade } from '../../../facades/useMotionExecutionRuntimeFacade';
 import { useMotionKinematicsFacade } from '../../../facades/useMotionKinematicsFacade';
@@ -198,6 +199,7 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
                      <View style={[styles.badge, { backgroundColor: theme.colors.primary + '20', borderLeftColor: theme.colors.primary }]}>
                         <Text style={[styles.badgeText, { color: theme.colors.primary }]}>{exerciseGroup.toUpperCase()}</Text>
                      </View>
+                     <Text style={{ color: theme.colors.textSecondary, fontSize: 13, letterSpacing: 1, fontStyle: 'italic', opacity: 0.7 }}>instruções</Text>
                   </View>
 
                   <View style={styles.heroLayout}>
@@ -243,6 +245,17 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
                      </View>
 
 
+                     {/* Localização do Sensor: Canto Esquerdo Total */}
+                     <View style={{ position: 'absolute', top: -30, left: 0, alignItems: 'flex-start' }}>
+                        <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 16, letterSpacing: 1, marginBottom: 4 }]}>SENSOR</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                           <Smartphone size={18} color={theme.colors.textSecondary} />
+                           <Text style={{ color: theme.colors.primary, fontSize: 16, fontWeight: '800' }}>
+                              <Text style={{ color: theme.colors.textSecondary, fontWeight: '500' }}>Tlm no</Text> braço
+                           </Text>
+                        </View>
+                     </View>
+
                      {/* Telemetria Flutuante Absoluta: Canto Direito Total */}
                      <View style={{ position: 'absolute', top: -30, right: 0, flexDirection: 'row', gap: 24, alignItems: 'flex-start' }}>
                         {/* SÉRIES (Esquerda) */}
@@ -277,10 +290,11 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
                         <View style={{ flexDirection: 'column', gap: 12 }}>
                            {/* 1. A SEGUIR */}
                            <TouchableOpacity activeOpacity={0.8} style={[styles.heroBlock, { width: 200, backgroundColor: theme.colors.cardBg, borderColor: theme.colors.outline, height: 75, position: 'relative', overflow: 'hidden', justifyContent: 'center', marginBottom: 0 }]}>
-                              <Image source={supinoBg} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', opacity: 0.33, resizeMode: 'cover' }} />
-                              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.cardBg, opacity: 0.5 }} />
+                              {/* Digital Crop via CSS Transform */}
+                              <Image source={aberturaBg} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', opacity: 0.6, resizeMode: 'cover', transform: [{ scale: 1.6 }, { translateY: -5 }] }} />
+                              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.cardBg, opacity: 0.2 }} />
                               <View style={{ paddingHorizontal: 2, zIndex: 10, flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                                 <Text style={{ color: theme.colors.primary, fontSize: 13, lineHeight: 15, textAlign: 'center', fontWeight: '800', width: '100%' }} numberOfLines={1}>{nextExerciseName.toLowerCase()}</Text>
+                                 <Text style={{ color: theme.colors.primary, fontSize: 16, lineHeight: 18, textAlign: 'center', fontWeight: '900', letterSpacing: 0, width: '100%', fontStyle: 'italic' }} numberOfLines={2}>{nextExerciseName.toLowerCase()}</Text>
                               </View>
                            </TouchableOpacity>
 
