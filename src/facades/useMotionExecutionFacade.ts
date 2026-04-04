@@ -286,6 +286,16 @@ export const useMotionExecutionFacade = () => {
           isHistoricalContext: isHistory,
           syncStatus: isDemo ? 'local_only' : 'synced',
           enrichmentStatus: 'not_requested',
+          // V4.0 Kinematic Score Tracking Mock
+          totalExecutionScore: Math.floor(Math.random() * 800) + 1000, // Random between 1000 and 1800 (1500 target allows occasional Beast modes)
+          averageExecutionPercent: 95,
+          dictionaryVersion: '1.0',
+          scoringVersion: '1.0',
+          executedExercises: [
+            { exerciseId: 'pushup', exerciseType: 'strength', repetitionCount: 50, seriesCount: 4, averageExecutionPercent: 100, totalScore: 400, muscleDistribution: ['upper-front', 'systemic', 'core'] },
+            { exerciseId: 'squat', exerciseType: 'strength', repetitionCount: 100, seriesCount: 5, averageExecutionPercent: 92, totalScore: 800, muscleDistribution: ['lower-front', 'systemic', 'core'] }
+          ],
+          dominantMuscleGroup: 'lower-front',
           wellnessImpact: {
              interestingOutcome: outcome.interesting.consistency,
              usefulOutcome: 'Registo contínuo garantido',

@@ -124,36 +124,46 @@ export const MotionRoot: React.FC<MotionRootProps> = ({ rawShellContext }) => {
         )}
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <MotionDemoBanner />
-        <MotionHistoryContextBanner />
-        <MotionPermissionsBanner />
-        
-        {/* Pilha de Navegação: Botão Voltar genérico se não for Home */}
-        {activeTab !== 'home' && activeTab !== 'profile' && (
-           <TouchableOpacity 
-             style={[styles.backButton, { backgroundColor: theme.colors.cardBg, borderColor: theme.colors.border }]} 
-             onPress={() => setActiveTab('home')}
-           >
-             <Text style={{ color: theme.colors.textSecondary, fontWeight: '600' }}>← Voltar à Visão Geral</Text>
-           </TouchableOpacity>
-        )}
-
-        <View style={styles.contentArea}>
-          {!universe ? (
-            <MotionNeutralEntry />
-          ) : (
-            <>
-              {activeTab === 'home' && <MotionHome onNavigate={(t: any) => setActiveTab(t)} />}
-              {activeTab === 'profile' && <MotionProfileScreen />}
-              {activeTab === 'plan' && <MotionPlanScreen />}
-              {activeTab === 'session' && <MotionSessionScreen />}
-              {activeTab === 'progress' && <MotionProgressScreen />}
-              {activeTab === 'context' && <MotionContextScreen />}
-            </>
-          )}
+      <View style={{ flex: 1, paddingBottom: 0 }}>
+        {/* Banners fixos ao topo da App Shell */}
+        <View style={{ paddingHorizontal: 16 }}>
+           <MotionDemoBanner />
+           <MotionHistoryContextBanner />
+           <MotionPermissionsBanner />
         </View>
-      </ScrollView>
+
+        {activeTab === 'home' && universe ? (
+           <View style={{ flex: 1 }}>
+              <MotionHome onNavigate={(t: any) => setActiveTab(t)} />
+           </View>
+        ) : (
+           <ScrollView contentContainerStyle={styles.scrollContent}>
+              {/* Pilha de Navegação: Botão Voltar genérico se não for Home */}
+              {activeTab !== 'home' && activeTab !== 'profile' && (
+                 <TouchableOpacity 
+                   style={[styles.backButton, { backgroundColor: theme.colors.cardBg, borderColor: theme.colors.border }]} 
+                   onPress={() => setActiveTab('home')}
+                 >
+                   <Text style={{ color: theme.colors.textSecondary, fontWeight: '600' }}>← Voltar à Visão Geral</Text>
+                 </TouchableOpacity>
+              )}
+
+              <View style={styles.contentArea}>
+                {!universe ? (
+                  <MotionNeutralEntry />
+                ) : (
+                  <>
+                    {activeTab === 'profile' && <MotionProfileScreen />}
+                    {activeTab === 'plan' && <MotionPlanScreen />}
+                    {activeTab === 'session' && <MotionSessionScreen />}
+                    {activeTab === 'progress' && <MotionProgressScreen />}
+                    {activeTab === 'context' && <MotionContextScreen />}
+                  </>
+                )}
+              </View>
+           </ScrollView>
+        )}
+      </View>
     </View>
   );
 };

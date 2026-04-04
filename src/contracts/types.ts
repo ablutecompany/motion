@@ -93,9 +93,19 @@ export interface WorkoutWellnessFeedback {
   consistencySignal?: string;
 }
 
+export interface KinematicExerciseLog {
+  exerciseId: string;
+  exerciseType: string;
+  repetitionCount: number;
+  seriesCount: number;
+  averageExecutionPercent: number;
+  totalScore: number;
+  muscleDistribution: string[];
+}
+
 export interface ConfirmedWorkoutRecord {
   id: string;
-  source: 'session' | 'passive_inference';
+  source: 'session' | 'passive_inference' | 'real' | 'preview' | 'imported';
   evidenceSource?: MotionInferenceEvidenceSource;
   sessionId?: string;
   confirmedAt: string;
@@ -113,6 +123,15 @@ export interface ConfirmedWorkoutRecord {
   // V3.5 Host Feedback
   hostFeedback?: WorkoutHostFeedback;
   operationalAdjustments?: MotionOperationalGoalAdjustment[];
+
+  // V4.0 Kinematic Score Tracking (Immutable Historical Provenance)
+  totalExecutionScore?: number;
+  averageExecutionPercent?: number;
+  executedExercises?: KinematicExerciseLog[];
+  dominantMuscleGroup?: string;
+  dictionaryVersion?: string;
+  scoringVersion?: string;
+  muscleDistributionResolved?: string[];
 }
 
 export type PlacementRecommendation = 'forearm' | 'upper-arm' | 'thigh' | 'waist' | 'pocket' | 'surface' | 'none';

@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Platform, PanResponder, Dimensions, Animated } from 'react-native';
-import { ClipboardList, Settings, Zap, BarChart2, Lightbulb, Smartphone, ChevronDown, ChevronUp } from 'lucide-react';
+import { ClipboardList, Settings, Zap, BarChart2, Lightbulb, Smartphone, ChevronDown, ChevronUp, MapPin } from 'lucide-react';
 import { useMotionTheme } from '../../../theme/useMotionTheme';
 import supinoBg from '../../../assets/supino_reto.png';
 import aberturaBg from '../../../assets/abertura_plana.png';
 import { useMotionStore, selectors } from '../../../store/useMotionStore';
 import { useMotionExecutionRuntimeFacade } from '../../../facades/useMotionExecutionRuntimeFacade';
 import { useMotionKinematicsFacade } from '../../../facades/useMotionKinematicsFacade';
+import { MotionBottomNav } from '../../components/MotionBottomNav';
+import { MotionProgressScreen } from '../MotionProgress';
 
 export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
    const theme = useMotionTheme();
@@ -23,6 +25,8 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
 
    const [isRunning, setIsRunning] = useState(false);
    const [seconds, setSeconds] = useState(0);
+   const [exerciseLocation, setExerciseLocation] = useState<'gym' | 'home' | 'street'>('gym');
+   const [isLocationAuto, setIsLocationAuto] = useState(true);
    const [isHighPrecision, setIsHighPrecision] = useState(true);
    const [isInfoVisible, setIsInfoVisible] = useState(false);
    const [isFlowVisible, setIsFlowVisible] = useState(false);
@@ -180,44 +184,41 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
    const nextExerciseName = "Abertura Plana";
 
    return (
-      <View style={{ flex: 1, minHeight: '100vh', backgroundColor: theme.colors.pageBg }}>
+      <View style={{ flex: 1, height: Platform.OS === 'web' ? '100vh' : '100%', overflow: 'hidden', backgroundColor: theme.colors.pageBg }}>
          <ScrollView style={[styles.container, { backgroundColor: 'transparent' }]} showsVerticalScrollIndicator={false}>
-
-            {/* Cockpit Principal: Cartão de Apresentação */}
-            <View style={[styles.heroBlock, { backgroundColor: theme.colors.cardBg, borderColor: theme.colors.outline, minHeight: 'auto', position: 'relative', overflow: 'hidden' }]}>
-
-               {/* Background Atético Full-Bleed do Cartão */}
-               <Image
-                  source={supinoBg}
-                  style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', opacity: 0.3, resizeMode: 'cover' }}
-               />
-               <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundImage: `radial-gradient(circle, transparent 20%, ${theme.colors.cardBg} 95%)` } as any} />
-
-               {/* Conteúdo Textual Frontal */}
-               <View style={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 24, zIndex: 10 }}>
-                  <View style={styles.topInfo}>
-                     <View style={[styles.badge, { backgroundColor: theme.colors.primary + '20', borderLeftColor: theme.colors.primary }]}>
-                        <Text style={[styles.badgeText, { color: theme.colors.primary }]}>{exerciseGroup.toUpperCase()}</Text>
-                     </View>
-                     <Text style={{ color: theme.colors.textSecondary, fontSize: 13, letterSpacing: 1, fontStyle: 'italic', opacity: 0.7 }}>instruções</Text>
-                  </View>
-
-                  <View style={styles.heroLayout}>
-                     <View style={{ flex: 1 }}>
-                        <Text style={[styles.heroHeadline, { color: theme.colors.textMain }]}>{exerciseName.toUpperCase()}</Text>
-                        <Text style={[{ fontSize: 18, color: theme.colors.primary, fontFamily: 'monospace', fontWeight: 'bold', marginTop: 4 }]}>
-                           {exerciseDetails}
-                        </Text>
-                     </View>
-                  </View>
-               </View>
-            </View>
-
-
 
             {/* ---------------- TREINO TAB ---------------- */}
             {activeTab === 'Treino' && (
                <>
+                  {/* Cockpit Principal: Cartão de Apresentação */}
+                  <View style={[styles.heroBlock, { backgroundColor: theme.colors.cardBg, borderColor: theme.colors.outline, minHeight: 'auto', position: 'relative', overflow: 'hidden' }]}>
+      
+                     {/* Background Atético Full-Bleed do Cartão */}
+                     <Image
+                        source={supinoBg}
+                        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', opacity: 0.3, resizeMode: 'cover' }}
+                     />
+                     <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundImage: `radial-gradient(circle, transparent 20%, ${theme.colors.cardBg} 95%)` } as any} />
+      
+                     {/* Conteúdo Textual Frontal */}
+                     <View style={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 24, zIndex: 10 }}>
+                        <View style={styles.topInfo}>
+                           <View style={[styles.badge, { backgroundColor: theme.colors.primary + '20', borderLeftColor: theme.colors.primary }]}>
+                              <Text style={[styles.badgeText, { color: theme.colors.primary }]}>{exerciseGroup.toUpperCase()}</Text>
+                           </View>
+                           <Text style={{ color: theme.colors.textSecondary, fontSize: 13, letterSpacing: 1, fontStyle: 'italic', opacity: 0.7 }}>instruções</Text>
+                        </View>
+      
+                        <View style={styles.heroLayout}>
+                           <View style={{ flex: 1 }}>
+                              <Text style={[styles.heroHeadline, { color: theme.colors.textMain }]}>{exerciseName.toUpperCase()}</Text>
+                              <Text style={[{ fontSize: 18, color: theme.colors.primary, fontFamily: 'monospace', fontWeight: 'bold', marginTop: 4 }]}>
+                                 {exerciseDetails}
+                              </Text>
+                           </View>
+                        </View>
+                     </View>
+                  </View>
                   {/* Relógio Cinético Livre de Cartão */}
                   <View style={{ marginVertical: 16, marginTop: 32, alignItems: 'center', justifyContent: 'center', width: '100%', position: 'relative' }}>
                      <View style={[styles.meterWrapper, { width: 320, height: 320, transform: [{ translateY: 100 }] }]}>
@@ -328,65 +329,120 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
 
             {/* ---------------- CONFIG TAB ---------------- */}
             {activeTab === 'Config' && (
-               <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 400, marginTop: 48, paddingBottom: 64 }}>
-                  <View style={{ width: 180, height: 180, alignItems: 'center', justifyContent: 'center', marginBottom: 32 }}>
-                     <Text style={{ fontSize: 130 }}>💪</Text>
-                     <View style={{ position: 'absolute', bottom: 12, right: 30, backgroundColor: theme.colors.pageBg, borderRadius: 12, padding: 6, transform: [{ rotate: '15deg' }] }}>
-                        <Smartphone size={46} color={theme.colors.primary} strokeWidth={3} />
+               <View style={{ flex: 1, paddingBottom: 64 }}>
+                  {/* Cartão Rectilíneo: MODO DE RASTREIO */}
+                  <View style={{ backgroundColor: theme.colors.cardBg, borderColor: theme.colors.outline, borderWidth: 1, borderRadius: 0, padding: 32, marginBottom: 24 }}>
+                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 24 }}>
+                        <Smartphone size={32} color={theme.colors.primary} />
+                        <Text style={{ color: theme.colors.textMain, fontSize: 24, fontWeight: '900', letterSpacing: 1 }}>
+                           MODO DE MEDIÇÃO
+                        </Text>
+                     </View>
+
+                     {isHighPrecision ? (
+                        <Text style={[styles.supportCopy, { color: theme.colors.textSecondary, fontSize: 15, marginBottom: 32, lineHeight: 24, fontFamily: 'monospace' }]}>
+                           1 - ATIVADO: Acionando esta opção ativará o radar cinético 3D, exigindo que o dispositivo esteja fixo com braçadeira no local de esforço.
+                        </Text>
+                     ) : (
+                        <Text style={[styles.supportCopy, { color: theme.colors.textSecondary, fontSize: 15, marginBottom: 32, lineHeight: 24, fontFamily: 'monospace' }]}>
+                           2 - DESATIVADO: O telemóvel não precisará ser mudado de local no corpo (e.g. pode ficar no bolso), mas perderá a precisão da medição de simetria e cinética.
+                        </Text>
+                     )}
+
+                     <View style={{ borderRadius: 0, padding: 2, backgroundColor: theme.colors.outline, position: 'relative', width: '100%' }}>
+                        {isHighPrecision && <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.primary, borderRadius: 0, animation: 'pulse 2s infinite' } as any} />}
+                        
+                        <TouchableOpacity
+                           style={{ backgroundColor: isHighPrecision ? theme.colors.cardBg : theme.colors.pageBg, paddingVertical: 20, paddingHorizontal: 24, borderRadius: 0, alignItems: 'center', width: '100%' }}
+                           onPress={() => setIsHighPrecision(!isHighPrecision)}
+                        >
+                           <Text style={{ fontSize: 16, fontWeight: '900', fontStyle: 'italic', letterSpacing: 1.5, color: isHighPrecision ? theme.colors.primary : theme.colors.textSecondary, textTransform: 'uppercase' }}>
+                              {isHighPrecision ? "Precisão direta: ATIVO" : "Precisão: Indireto"}
+                           </Text>
+                        </TouchableOpacity>
                      </View>
                   </View>
 
-                  {isHighPrecision ? (
-                     <Text style={[styles.supportCopy, { color: theme.colors.textSecondary, textAlign: 'center', fontSize: 24, marginTop: 16, marginBottom: 48 }]}>
-                        Tlm no <Text style={{ color: theme.colors.textMain, fontWeight: 'bold' }}>braço</Text>
-                     </Text>
-                  ) : (
-                     <Text style={[styles.supportCopy, { color: theme.colors.primary, textAlign: 'center', fontSize: 16, marginTop: 16, marginBottom: 48, paddingHorizontal: 24 }]}>
-                        O dispositivo não precisa de estar ancorado ao músculo, mas as leituras perdem fidelidade matemática.
-                     </Text>
-                  )}
+                  {/* Cartão Rectilíneo: LOCAL DE TREINO */}
+                  <View style={{ backgroundColor: theme.colors.cardBg, borderColor: theme.colors.outline, borderWidth: 1, borderRadius: 0, padding: 32, marginBottom: 24 }}>
+                     <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                           <MapPin size={32} color={theme.colors.primary} />
+                           <Text style={{ color: theme.colors.textMain, fontSize: 24, fontWeight: '900', letterSpacing: 1 }}>
+                              LOCAL DE EXERCÍCIO
+                           </Text>
+                        </View>
+                        <TouchableOpacity onPress={() => setIsLocationAuto(!isLocationAuto)}>
+                           <Text style={{ color: isLocationAuto ? theme.colors.primary : theme.colors.textSecondary, fontSize: 13, fontWeight: 'bold', letterSpacing: 1, textTransform: 'uppercase' }}>
+                              {isLocationAuto ? 'AUTO' : 'MANUAL'}
+                           </Text>
+                        </TouchableOpacity>
+                     </View>
 
-                  <View style={{ alignSelf: 'center', borderRadius: 16, padding: 2, backgroundColor: theme.colors.outline, position: 'relative', width: '85%' }}>
-                     <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.primary, borderRadius: 16, animation: 'pulse 2s infinite' } as any} />
-
-                     <TouchableOpacity
-                        style={{ backgroundColor: isHighPrecision ? theme.colors.cardBg : theme.colors.pageBg, paddingVertical: 20, paddingHorizontal: 24, borderRadius: 15, alignItems: 'center', width: '100%' }}
-                        onPress={() => setIsInfoVisible(true)}
-                     >
-                        <Text style={{ fontSize: 17, fontWeight: '900', fontStyle: 'italic', letterSpacing: 2, color: isHighPrecision ? theme.colors.primary : theme.colors.textSecondary }}>
-                           {isHighPrecision ? "PRECISÃO MÁXIMA" : "PRECISÃO (DESLIGADA)"}
+                     {isLocationAuto ? (
+                        <Text style={[styles.supportCopy, { color: theme.colors.primary, fontSize: 15, marginBottom: 32, lineHeight: 24, fontFamily: 'monospace' }]}>
+                           ✔ Padrão geográfico reconhecido após 3 sessões locais. O sistema vinculou o ambiente às máquinas detetadas remotamente.
                         </Text>
-                     </TouchableOpacity>
+                     ) : (
+                        <Text style={[styles.supportCopy, { color: theme.colors.textSecondary, fontSize: 15, marginBottom: 32, lineHeight: 24, fontFamily: 'monospace' }]}>
+                           O algoritmo logístico adapta prescrições balísticas com base nas restrições e máquinas da sua localização geográfica selecionada.
+                        </Text>
+                     )}
+
+                     <View style={{ flexDirection: 'column', gap: 12, opacity: isLocationAuto ? 0.6 : 1 }} pointerEvents={isLocationAuto ? 'none' : 'auto'}>
+                        {/* Option: Gym */}
+                        <TouchableOpacity
+                           activeOpacity={0.8}
+                           onPress={() => setExerciseLocation('gym')}
+                           style={{ padding: 20, borderWidth: 1, borderRadius: 0, borderColor: exerciseLocation === 'gym' ? theme.colors.primary : theme.colors.outline, backgroundColor: exerciseLocation === 'gym' ? theme.colors.primary + '10' : theme.colors.pageBg }}
+                        >
+                           <Text style={{ color: exerciseLocation === 'gym' ? theme.colors.primary : theme.colors.textMain, fontWeight: '900', fontSize: 16, letterSpacing: 1, marginBottom: 6, textTransform: 'uppercase' }}>
+                              LABORATÓRIO (GYM)
+                           </Text>
+                           <Text style={{ color: exerciseLocation === 'gym' ? theme.colors.primary : theme.colors.textSecondary, fontSize: 13, lineHeight: 18 }}>Estrutura completa. Máquinas clássicas e densidade máxima de equipamento suportados.</Text>
+                        </TouchableOpacity>
+
+                        {/* Option: Casa */}
+                        <TouchableOpacity
+                           activeOpacity={0.8}
+                           onPress={() => setExerciseLocation('home')}
+                           style={{ padding: 20, borderWidth: 1, borderRadius: 0, borderColor: exerciseLocation === 'home' ? theme.colors.primary : theme.colors.outline, backgroundColor: exerciseLocation === 'home' ? theme.colors.primary + '10' : theme.colors.pageBg }}
+                        >
+                           <Text style={{ color: exerciseLocation === 'home' ? theme.colors.primary : theme.colors.textMain, fontWeight: '900', fontSize: 16, letterSpacing: 1, marginBottom: 6, textTransform: 'uppercase' }}>
+                              QUARTEL (CASA)
+                           </Text>
+                           <Text style={{ color: exerciseLocation === 'home' ? theme.colors.primary : theme.colors.textSecondary, fontSize: 13, lineHeight: 18 }}>Substituição de máquinas originais por adaptações "Home Made" e uso de mobiliário base.</Text>
+                        </TouchableOpacity>
+
+                        {/* Option: Sem suporte */}
+                        <TouchableOpacity
+                           activeOpacity={0.8}
+                           onPress={() => setExerciseLocation('street')}
+                           style={{ padding: 20, borderWidth: 1, borderRadius: 0, borderColor: exerciseLocation === 'street' ? theme.colors.primary : theme.colors.outline, backgroundColor: exerciseLocation === 'street' ? theme.colors.primary + '10' : theme.colors.pageBg }}
+                        >
+                           <Text style={{ color: exerciseLocation === 'street' ? theme.colors.primary : theme.colors.textMain, fontWeight: '900', fontSize: 16, letterSpacing: 1, marginBottom: 6, textTransform: 'uppercase' }}>
+                              HOSTIL (SEM SUPORTE)
+                           </Text>
+                           <Text style={{ color: exerciseLocation === 'street' ? theme.colors.primary : theme.colors.textSecondary, fontSize: 13, lineHeight: 18 }}>Zero equipamento. Ao ar livre ou sala vazia. Foco mecânico exclusivo no peso corporal livre.</Text>
+                        </TouchableOpacity>
+                     </View>
                   </View>
+
+               </View>
+            )}
+
+            {/* ---------------- MǸTRICAS TAB ---------------- */}
+            {activeTab === 'Métricas' && (
+               <View style={{ flex: 1, paddingBottom: 64 }}>
+                  <MotionProgressScreen />
                </View>
             )}
 
             <View style={{ height: 100 }} />
          </ScrollView>
 
-         {/* Dock Bar Flutuante */}
-         <View style={[styles.dockBar, { backgroundColor: theme.colors.pageBg, borderTopColor: theme.colors.outline, position: 'fixed' as any }]}>
-            <TouchableOpacity style={styles.dockItem}>
-               <ClipboardList size={28} color={theme.colors.textSecondary} />
-               <Text style={[styles.dockText, { color: theme.colors.textSecondary }]}>Plano</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.dockItem} onPress={() => setActiveTab('Config')}>
-               <Settings size={28} color={activeTab === 'Config' ? theme.colors.primary : theme.colors.textSecondary} />
-               <Text style={[styles.dockText, { color: activeTab === 'Config' ? theme.colors.primary : theme.colors.textSecondary, fontWeight: activeTab === 'Config' ? '800' : 'normal' }]}>Config</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.dockItem} onPress={() => setActiveTab('Treino')}>
-               <Zap size={28} color={activeTab === 'Treino' ? theme.colors.primary : theme.colors.textSecondary} />
-               <Text style={[styles.dockText, { color: activeTab === 'Treino' ? theme.colors.primary : theme.colors.textSecondary, fontWeight: activeTab === 'Treino' ? '800' : 'normal' }]}>Treino</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.dockItem}>
-               <BarChart2 size={28} color={theme.colors.textSecondary} />
-               <Text style={[styles.dockText, { color: theme.colors.textSecondary }]}>Métricas</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.dockItem}>
-               <Lightbulb size={28} color={theme.colors.textSecondary} />
-               <Text style={[styles.dockText, { color: theme.colors.textSecondary }]}>Sugestões</Text>
-            </TouchableOpacity>
-         </View>
+         {/* COMPONENTE UNICO BOTTOM NAV FIXA */}
+         <MotionBottomNav activeTab={activeTab} onTabPress={setActiveTab} />
 
          {/* Popup de Informação: Modo de Precisão */}
          {isInfoVisible && (
@@ -474,8 +530,5 @@ const styles = StyleSheet.create({
    metricLabel: { fontSize: 16, fontFamily: 'monospace', fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase' },
    metricValue: { fontSize: 24, fontWeight: '900' },
    mainButton: { padding: 20, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-   buttonText: { fontSize: 15, fontWeight: '900', fontStyle: 'italic', letterSpacing: 1 },
-   dockBar: { position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 999, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', height: 100, paddingTop: 15, paddingBottom: 25, borderTopWidth: 1 },
-   dockItem: { alignItems: 'center', justifyContent: 'center', flex: 1, gap: 6, opacity: 0.9 },
-   dockText: { fontSize: 10, fontWeight: '600', letterSpacing: 0.5 }
+   buttonText: { fontSize: 15, fontWeight: '900', fontStyle: 'italic', letterSpacing: 1 }
 });
