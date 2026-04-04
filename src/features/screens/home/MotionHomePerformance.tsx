@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Platform } from 'react-native';
-import { ClipboardList, Settings, Zap, BarChart2, Lightbulb } from 'lucide-react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Platform, PanResponder, Dimensions, Animated } from 'react-native';
+import { ClipboardList, Settings, Zap, BarChart2, Lightbulb, Smartphone, ChevronDown, ChevronUp } from 'lucide-react';
 import { useMotionTheme } from '../../../theme/useMotionTheme';
 import supinoBg from '../../../assets/supino_reto.png';
 import { useMotionStore, selectors } from '../../../store/useMotionStore';
@@ -8,331 +8,460 @@ import { useMotionExecutionRuntimeFacade } from '../../../facades/useMotionExecu
 import { useMotionKinematicsFacade } from '../../../facades/useMotionKinematicsFacade';
 
 export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
-  const theme = useMotionTheme();
+   const theme = useMotionTheme();
 
-  // Obter Sessão Corrente
-  const plan = useMotionStore(selectors.selectPlan);
-  const implicitSession = plan?.sessions?.find(s => !s.completed) ?? plan?.sessions?.[0];
-  const runtimeCore = useMotionExecutionRuntimeFacade(implicitSession?.id || 's1');
+   // Obter Sessão Corrente
+   const plan = useMotionStore(selectors.selectPlan);
+   const implicitSession = plan?.sessions?.find(s => !s.completed) ?? plan?.sessions?.[0];
+   const runtimeCore = useMotionExecutionRuntimeFacade(implicitSession?.id || 's1');
 
-  // Active Block Extraction
-  const activeBlockIndex = runtimeCore.blocks.findIndex((b: any) => b.status === 'active');
-  const activeBlock = runtimeCore.blocks[activeBlockIndex > -1 ? activeBlockIndex : 0];
-  const totalBlocks = runtimeCore.blocks.length;
+   // Active Block Extraction
+   const activeBlockIndex = runtimeCore.blocks.findIndex((b: any) => b.status === 'active');
+   const activeBlock = runtimeCore.blocks[activeBlockIndex > -1 ? activeBlockIndex : 0];
+   const totalBlocks = runtimeCore.blocks.length;
 
-  const [isRunning, setIsRunning] = useState(false);
-  const [seconds, setSeconds] = useState(0); 
-  const [isHighPrecision, setIsHighPrecision] = useState(true);
-  const [isInfoVisible, setIsInfoVisible] = useState(false);
-  const [weightRecommended, setWeightRecommended] = useState(120);
-  const MAX_SECONDS = (implicitSession?.durationMinutes || 45) * 60;
-  // -------------------------------------------------------------
-  // KINEMATICS ENGINE (O "Conta-Rotações")
-  // -------------------------------------------------------------
-  const kinematics = useMotionKinematicsFacade(isRunning);
+   const [isRunning, setIsRunning] = useState(false);
+   const [seconds, setSeconds] = useState(0);
+   const [isHighPrecision, setIsHighPrecision] = useState(true);
+   const [isInfoVisible, setIsInfoVisible] = useState(false);
+   const [isFlowVisible, setIsFlowVisible] = useState(false);
+   const [isWeightDialVisible, setIsWeightDialVisible] = useState(false);
+   const [activeTab, setActiveTab] = useState('Treino');
+   const [weightRecommended, setWeightRecommended] = useState(120);
+   const weightRef = useRef(weightRecommended);
+   const [dialRotation, setDialRotation] = useState(0);
 
-  useEffect(() => {
-    let interval: any;
-    if (isRunning) {
-      interval = setInterval(() => {
-        setSeconds((s: number) => Math.min(s + 1, MAX_SECONDS));
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [isRunning, MAX_SECONDS]);
+   useEffect(() => { weightRef.current = weightRecommended; }, [weightRecommended]);
 
-  const lastPressRef = useRef(0);
-  const handleClockPress = () => {
-    const time = new Date().getTime();
-    const delta = time - lastPressRef.current;
-    
-    if (delta > 0 && delta < 400) {
-      // Duplo clique detectado: Reset Relógio
-      setSeconds(0);
-      setIsRunning(false);
-      lastPressRef.current = 0;
-      runtimeCore.actions.pauseSession();
-    } else {
-      // Clique simples: Inicia / Pausa
+   const pulseAnim = useRef(new Animated.Value(0.2)).current;
+   useEffect(() => {
+      // Deixar correr o loop infinitamente para evitar `loop.stop()` a chamar `global.cancelAnimationFrame` no Vite
+      Animated.loop(
+         Animated.sequence([
+            Animated.timing(pulseAnim, { toValue: 1, duration: 1500, useNativeDriver: false }),
+            Animated.timing(pulseAnim, { toValue: 0.2, duration: 1500, useNativeDriver: false }),
+         ])
+      ).start();
+   }, [pulseAnim]);
+
+   const getTargetLimb = () => {
+      if (!isHighPrecision) return 'o dispositivo';
+      const name = (activeBlock?.exercise?.name || '').toLowerCase();
+      if (name.includes('bicep') || name.includes('tricep') || name.includes('braço') || name.includes('supino') || name.includes('remada') || name.includes('ombro') || name.includes('peito') || name.includes('costas')) return 'e sinta no braço';
+      if (name.includes('agacha') || name.includes('leg') || name.includes('perna') || name.includes('gémeo') || name.includes('glúteo')) return 'e sinta na perna';
+      return 'o braço';
+   };
+
+   const lastAngleRef = useRef(0);
+   const panResponder = useRef(
+      PanResponder.create({
+         onStartShouldSetPanResponder: () => true,
+         onPanResponderGrant: (evt: any) => {
+            const { pageX, pageY } = evt.nativeEvent;
+            const { width, height } = Dimensions.get('window');
+            const cx = width / 2;
+            const cy = height / 2;
+            lastAngleRef.current = Math.atan2(pageY - cy, pageX - cx);
+         },
+         onPanResponderMove: (evt: any) => {
+            const { pageX, pageY } = evt.nativeEvent;
+            const { width, height } = Dimensions.get('window');
+            const cx = width / 2;
+            const cy = height / 2;
+            const currentAngle = Math.atan2(pageY - cy, pageX - cx);
+
+            let delta = currentAngle - lastAngleRef.current;
+            if (delta > Math.PI) delta -= 2 * Math.PI;
+            if (delta < -Math.PI) delta += 2 * Math.PI;
+
+            if (Math.abs(delta) > 0.15) {
+               const direction = delta > 0 ? 1 : -1;
+               const newWeight = Math.max(0, weightRef.current + (2.5 * direction));
+               setWeightRecommended(newWeight);
+               setDialRotation((r: any) => r + (direction * 15));
+               lastAngleRef.current = currentAngle;
+            }
+         },
+      })
+   ).current;
+
+   const MAX_SECONDS = (implicitSession?.durationMinutes || 45) * 60;
+   // -------------------------------------------------------------
+   // KINEMATICS ENGINE (O "Conta-Rotações")
+   // -------------------------------------------------------------
+   const kinematics = useMotionKinematicsFacade(isRunning);
+
+   useEffect(() => {
+      let interval: any;
       if (isRunning) {
-        setIsRunning(false);
-        runtimeCore.actions.pauseSession();
-      } else {
-        setIsRunning(true);
-        runtimeCore.actions.resumeSession();
+         interval = setInterval(() => {
+            setSeconds((s: number) => Math.min(s + 1, MAX_SECONDS));
+         }, 1000);
       }
-      lastPressRef.current = time;
-    }
-  };
+      return () => clearInterval(interval);
+   }, [isRunning, MAX_SECONDS]);
 
-  const formatTime = (totalSeconds: number) => {
-    const m = Math.floor(totalSeconds / 60);
-    const s = totalSeconds % 60;
-    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  };
+   const lastPressRef = useRef(0);
+   const handleClockPress = () => {
+      const time = new Date().getTime();
+      const delta = time - lastPressRef.current;
 
-  const getEffortColor = () => {
-     if (!kinematics.isAvailable) return theme.colors.outline;
-     switch (kinematics.effortState) {
-        case 'redline': return '#ff4757'; // Coral quente intenso, não erro crítico
-        case 'high': return '#ffa502';    // Tangerina quente
-        case 'medium': return theme.colors.primary; // Cyan Base vivo
-        case 'low': 
-        default: return theme.colors.primary + '80'; // Cyan discreto/apagado
-     }
-  };
+      if (delta > 0 && delta < 400) {
+         // Duplo clique detectado: Reset Relógio
+         setSeconds(0);
+         setIsRunning(false);
+         lastPressRef.current = 0;
+         runtimeCore.actions.pauseSession();
+      } else {
+         // Clique simples: Inicia / Pausa
+         if (isRunning) {
+            setIsRunning(false);
+            runtimeCore.actions.pauseSession();
+         } else {
+            setIsRunning(true);
+            runtimeCore.actions.resumeSession();
+         }
+         lastPressRef.current = time;
+      }
+   };
 
-  const renderRing = (effortValue: number, size: number, stroke: number) => {
-     const radius = size / 2;
-     // Escala de esforço 0.0 - 1.0 (onde 100 max = 1.0)
-     const progress = effortValue / 100;
-     const p = Math.max(0, Math.min(1, progress));
-     const rightRot = Math.min(p * 360, 180);
-     const leftRot = Math.max(p * 360 - 180, 0);
-     
-     const activeColor = getEffortColor();
+   const formatTime = (totalSeconds: number) => {
+      const m = Math.floor(totalSeconds / 60);
+      const s = totalSeconds % 60;
+      return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+   };
 
-     return (
-       <View style={[styles.effortRingGlow, { width: size, height: size, borderRadius: radius, shadowColor: activeColor, transform: [{ rotate: '180deg' }] }]}>
-         <View style={{ position: 'absolute', width: size, height: size, borderRadius: radius, borderWidth: stroke, borderColor: theme.colors.outline, opacity: 0.3 }} />
+   const getEffortColor = () => {
+      if (!kinematics.isAvailable) return theme.colors.outline;
+      switch (kinematics.effortState) {
+         case 'redline': return '#ff4757'; // Coral quente intenso, não erro crítico
+         case 'high': return '#ffa502';    // Tangerina quente
+         case 'medium': return theme.colors.primary; // Cyan Base vivo
+         case 'low':
+         default: return theme.colors.primary + '80'; // Cyan discreto/apagado
+      }
+   };
 
-         <View style={{ position: 'absolute', width: radius, height: size, right: 0, overflow: 'hidden' }}>
-            <View style={{ width: size, height: size, borderRadius: radius, borderWidth: stroke, borderTopColor: activeColor, borderRightColor: activeColor, borderBottomColor: 'transparent', borderLeftColor: 'transparent', position: 'absolute', right: 0, transform: [{ rotate: `${-135 + rightRot}deg` }] }} />
+   const renderRing = (effortValue: number, size: number, stroke: number) => {
+      const radius = size / 2;
+      // Escala de esforço 0.0 - 1.0 (onde 100 max = 1.0)
+      const progress = effortValue / 100;
+      const p = Math.max(0, Math.min(1, progress));
+      const rightRot = Math.min(p * 360, 180);
+      const leftRot = Math.max(p * 360 - 180, 0);
+
+      const activeColor = getEffortColor();
+
+      return (
+         <View style={[styles.effortRingGlow, { width: size, height: size, borderRadius: radius, shadowColor: activeColor, transform: [{ rotate: '180deg' }] }]}>
+            <View style={{ position: 'absolute', width: size, height: size, borderRadius: radius, borderWidth: stroke, borderColor: theme.colors.outline, opacity: 0.3 }} />
+
+            <View style={{ position: 'absolute', width: radius, height: size, right: 0, overflow: 'hidden' }}>
+               <View style={{ width: size, height: size, borderRadius: radius, borderWidth: stroke, borderTopColor: activeColor, borderRightColor: activeColor, borderBottomColor: 'transparent', borderLeftColor: 'transparent', position: 'absolute', right: 0, transform: [{ rotate: `${-135 + rightRot}deg` }] }} />
+            </View>
+
+            <View style={{ position: 'absolute', width: radius, height: size, left: 0, overflow: 'hidden' }}>
+               <View style={{ width: size, height: size, borderRadius: radius, borderWidth: stroke, borderTopColor: activeColor, borderRightColor: activeColor, borderBottomColor: 'transparent', borderLeftColor: 'transparent', position: 'absolute', left: 0, transform: [{ rotate: `${45 + leftRot}deg` }] }} />
+            </View>
          </View>
+      );
+   };
 
-         <View style={{ position: 'absolute', width: radius, height: size, left: 0, overflow: 'hidden' }}>
-            <View style={{ width: size, height: size, borderRadius: radius, borderWidth: stroke, borderTopColor: activeColor, borderRightColor: activeColor, borderBottomColor: 'transparent', borderLeftColor: 'transparent', position: 'absolute', left: 0, transform: [{ rotate: `${45 + leftRot}deg` }] }} />
-         </View>
-       </View>
-     );
-  };
+   const currentRep = isRunning ? Math.floor((seconds % 30) / 3) : 0;
+   const targetReps = 12;
+   const currentSet = activeBlockIndex > -1 ? activeBlockIndex + 1 : 1;
+   const targetSets = totalBlocks > 0 ? totalBlocks : 4;
 
-  const currentRep = isRunning ? Math.floor((seconds % 30) / 3) : 0; 
-  const targetReps = 12;
-  const currentSet = activeBlockIndex > -1 ? activeBlockIndex + 1 : 1;
-  const targetSets = totalBlocks > 0 ? totalBlocks : 4;
-  
-  // Para efeitos estritos de simulação de mockup tático solicitado:
-  const exerciseName = "Supino Reto";
-  const exerciseGroup = "Peitoral Geral / Médio";
-  const exerciseDetails = "(Barra ou Halteres)";
+   // Para efeitos estritos de simulação de mockup tático solicitado:
+   const exerciseName = "Supino Reto";
+   const exerciseGroup = "Peitoral Geral / Médio";
+   const exerciseDetails = "(Barra ou Halteres)";
+   const nextExerciseName = "Abertura Plana";
 
-  return (
-    <View style={{ flex: 1, minHeight: '100vh', backgroundColor: theme.colors.pageBg }}>
-      <ScrollView style={[styles.container, { backgroundColor: 'transparent' }]} showsVerticalScrollIndicator={false}>
-      
-      {/* Cockpit Principal: Cartão de Apresentação */}
-      <View style={[styles.heroBlock, { backgroundColor: theme.colors.cardBg, borderColor: theme.colors.outline, minHeight: 'auto', position: 'relative', overflow: 'hidden' }]}>
-         
-         {/* Background Atético Full-Bleed do Cartão */}
-         <Image 
-            source={supinoBg}
-            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', opacity: 0.3, resizeMode: 'cover' }}
-         />
-         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundImage: `radial-gradient(circle, transparent 20%, ${theme.colors.cardBg} 95%)` } as any} />
+   return (
+      <View style={{ flex: 1, minHeight: '100vh', backgroundColor: theme.colors.pageBg }}>
+         <ScrollView style={[styles.container, { backgroundColor: 'transparent' }]} showsVerticalScrollIndicator={false}>
 
-         {/* Conteúdo Textual Frontal */}
-         <View style={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 24, zIndex: 10 }}>
-            <View style={styles.topInfo}>
-               <View style={[styles.badge, { backgroundColor: theme.colors.primary + '20', borderLeftColor: theme.colors.primary }]}>
-                 <Text style={[styles.badgeText, { color: theme.colors.primary }]}>{exerciseGroup.toUpperCase()}</Text>
+            {/* Cockpit Principal: Cartão de Apresentação */}
+            <View style={[styles.heroBlock, { backgroundColor: theme.colors.cardBg, borderColor: theme.colors.outline, minHeight: 'auto', position: 'relative', overflow: 'hidden' }]}>
+
+               {/* Background Atético Full-Bleed do Cartão */}
+               <Image
+                  source={supinoBg}
+                  style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', opacity: 0.3, resizeMode: 'cover' }}
+               />
+               <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundImage: `radial-gradient(circle, transparent 20%, ${theme.colors.cardBg} 95%)` } as any} />
+
+               {/* Conteúdo Textual Frontal */}
+               <View style={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 24, zIndex: 10 }}>
+                  <View style={styles.topInfo}>
+                     <View style={[styles.badge, { backgroundColor: theme.colors.primary + '20', borderLeftColor: theme.colors.primary }]}>
+                        <Text style={[styles.badgeText, { color: theme.colors.primary }]}>{exerciseGroup.toUpperCase()}</Text>
+                     </View>
+                  </View>
+
+                  <View style={styles.heroLayout}>
+                     <View style={{ flex: 1 }}>
+                        <Text style={[styles.heroHeadline, { color: theme.colors.textMain }]}>{exerciseName.toUpperCase()}</Text>
+                        <Text style={[{ fontSize: 18, color: theme.colors.primary, fontFamily: 'monospace', fontWeight: 'bold', marginTop: 4 }]}>
+                           {exerciseDetails}
+                        </Text>
+                     </View>
+                  </View>
                </View>
             </View>
 
-            <View style={styles.heroLayout}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.heroHeadline, { color: theme.colors.textMain }]}>{exerciseName.toUpperCase()}</Text>
-                <Text style={[{ fontSize: 18, color: theme.colors.primary, fontFamily: 'monospace', fontWeight: 'bold', marginTop: 4 }]}>
-                   {exerciseDetails}
-                </Text>
-              </View>
-            </View>
-         </View>
-      </View>
 
 
+            {/* ---------------- TREINO TAB ---------------- */}
+            {activeTab === 'Treino' && (
+               <>
+                  {/* Relógio Cinético Livre de Cartão */}
+                  <View style={{ marginVertical: 16, marginTop: 32, alignItems: 'center', justifyContent: 'center', width: '100%', position: 'relative' }}>
+                     <View style={[styles.meterWrapper, { width: 320, height: 320, transform: [{ translateY: 100 }] }]}>
+                        <TouchableOpacity activeOpacity={0.8} onPress={handleClockPress}>
+                           {renderRing(kinematics.effortValue, 320, 12)}
+                           <View style={[styles.effortCenterLabel, { width: 320, height: 320 }]}>
+                              <Text style={[styles.effortValue, { color: theme.colors.primary, fontSize: 76, lineHeight: 82 }]}>{formatTime(seconds)}</Text>
+                              <Text style={[styles.effortUnit, { color: theme.colors.primary, marginTop: 8 }]}>
+                                 {isRunning ? 'EM CURSO' : 'TOCAR/INICIAR'}
+                              </Text>
+                              {!isRunning && (
+                                 <Animated.Text style={{ opacity: pulseAnim, color: theme.colors.textSecondary, fontSize: 13, marginTop: 12, letterSpacing: 1, position: 'absolute', bottom: 50 }}>
+                                    mova {getTargetLimb()}
+                                 </Animated.Text>
+                              )}
+                           </View>
+                        </TouchableOpacity>
 
-      {/* Relógio Cinético Livre de Cartão */}
-      <View style={{ marginVertical: 48, alignItems: 'center', justifyContent: 'center', width: '100%', position: 'relative' }}>
-         <View style={[styles.meterWrapper, { width: 260, height: 260 }]}>
-           <TouchableOpacity activeOpacity={0.8} onPress={handleClockPress}>
-             {renderRing(kinematics.effortValue, 260, 10)}
-             <View style={[styles.effortCenterLabel, { width: 260, height: 260 }]}>
-               <Text style={[styles.effortValue, { color: theme.colors.primary, fontSize: 64, lineHeight: 68 }]}>{formatTime(seconds)}</Text>
-               <Text style={[styles.effortUnit, { color: theme.colors.primary, marginTop: 8 }]}>
-                 {isRunning ? 'EM CURSO' : 'TOCAR/INICIAR'}
-               </Text>
-             </View>
-           </TouchableOpacity>
-           
-           {kinematics.isSimulated && isRunning && (
-              <Text style={{ fontSize: 14, color: theme.colors.warning, position: 'absolute', bottom: -24, fontFamily: 'monospace', fontWeight: 'bold' }}>MOCK SENSOR</Text>
-           )}
-           {kinematics.source === 'unsupported' && isRunning && (
-              <Text style={{ fontSize: 14, color: theme.colors.textSecondary, position: 'absolute', bottom: -24, fontFamily: 'monospace', fontWeight: 'bold' }}>S/ SENSOR DETETADO</Text>
-           )}
-         </View>
+                        {kinematics.isSimulated && isRunning && (
+                           <Text style={{ fontSize: 14, color: theme.colors.warning, position: 'absolute', bottom: -24, fontFamily: 'monospace', fontWeight: 'bold' }}>MOCK SENSOR</Text>
+                        )}
+                        {kinematics.source === 'unsupported' && isRunning && (
+                           <Text style={{ fontSize: 14, color: theme.colors.textSecondary, position: 'absolute', bottom: -24, fontFamily: 'monospace', fontWeight: 'bold' }}>S/ SENSOR DETETADO</Text>
+                        )}
+                     </View>
 
-         <View style={{ alignSelf: 'stretch', marginTop: -40, alignItems: 'flex-start' }}>
-            <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 16, letterSpacing: 1 }]}>
-               CARGA{'\n'}RECOMENDADA
-            </Text>
-            
-            <View style={{ marginTop: 2, alignItems: 'flex-start' }}>
-               <Text style={{ color: theme.colors.textMain, fontSize: 24, fontWeight: '900' }}>
-                  {weightRecommended} <Text style={{ fontSize: 16, color: theme.colors.textSecondary }}>KG</Text>
-               </Text>
-               
-               <View style={{ flexDirection: 'row', gap: 6, height: 36, marginTop: 10, width: 90 }}>
-                  <TouchableOpacity 
-                     style={{ flex: 1, backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.outline, borderRadius: 8, alignItems: 'center', justifyContent: 'center' }}
-                     onPress={() => setWeightRecommended((w: number) => Math.max(0, w - 2.5))}
-                  >
-                     <Text style={[styles.metaText, { color: theme.colors.textSecondary, fontSize: 20, fontWeight: '400', marginTop: -2 }]}>-</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                     style={{ flex: 1, backgroundColor: theme.colors.primary, borderRadius: 8, alignItems: 'center', justifyContent: 'center' }}
-                     onPress={() => setWeightRecommended((w: number) => w + 2.5)}
-                  >
-                     <Text style={[styles.metaText, { color: theme.colors.pageBg, fontSize: 20, fontWeight: '700', marginTop: -2 }]}>+</Text>
-                  </TouchableOpacity>
+
+                     {/* Telemetria Flutuante Absoluta: Canto Direito Total */}
+                     <View style={{ position: 'absolute', top: -30, right: 0, flexDirection: 'row', gap: 24, alignItems: 'flex-start' }}>
+                        {/* SÉRIES (Esquerda) */}
+                        <View style={{ alignItems: 'flex-end' }}>
+                           <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 16, letterSpacing: 1, marginBottom: 2 }]}>SÉRIE</Text>
+                           <Text style={{ color: theme.colors.primary, fontSize: 32, fontWeight: '900', marginBottom: 12 }}>{currentSet}<Text style={{ fontSize: 16, color: theme.colors.textSecondary }}>/{targetSets}</Text></Text>
+                           <View style={{ flexDirection: 'column', gap: 6 }}>
+                              {Array.from({ length: targetSets }).map((_, i) => (
+                                 <View key={i} style={{ width: 32, height: 8, backgroundColor: i < currentSet ? theme.colors.primary : theme.colors.outline, borderRadius: 3 }} />
+                              ))}
+                           </View>
+                        </View>
+
+                        {/* REPS (Direita, antiga posição natural da série) */}
+                        <View style={{ alignItems: 'flex-end' }}>
+                           <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 16, letterSpacing: 1, marginBottom: 2 }]}>REPS</Text>
+                           <Text style={{ color: theme.colors.textMain, fontSize: 32, fontWeight: '900', marginBottom: 12 }}>{currentRep}<Text style={{ fontSize: 16, color: theme.colors.textSecondary }}>/{targetReps}</Text></Text>
+                           <View style={{ flexDirection: 'column', gap: 5 }}>
+                              {Array.from({ length: targetReps }).map((_, i) => (
+                                 <View key={i} style={{ width: 32, height: 6, backgroundColor: i < currentRep ? theme.colors.textMain : theme.colors.outline, borderRadius: 3 }} />
+                              ))}
+                           </View>
+                        </View>
+                     </View>
+                  </View>
+                  {/* --- ÁREA DE RODAPÉ TÁTICO --- */}
+                  <View style={{ marginTop: 120, paddingBottom: 24 }}>
+                     <Text style={{ color: theme.colors.textSecondary, fontSize: 13, fontStyle: 'italic', letterSpacing: 1, marginLeft: 4, marginBottom: 8 }}>exercício seguinte</Text>
+
+                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        {/* COLUNA ESQUERDA: NAVEGAÇÃO */}
+                        <View style={{ flexDirection: 'column', gap: 12 }}>
+                           {/* 1. A SEGUIR */}
+                           <TouchableOpacity activeOpacity={0.8} style={[styles.heroBlock, { width: 200, backgroundColor: theme.colors.cardBg, borderColor: theme.colors.outline, height: 75, position: 'relative', overflow: 'hidden', justifyContent: 'center', marginBottom: 0 }]}>
+                              <Image source={supinoBg} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', opacity: 0.33, resizeMode: 'cover' }} />
+                              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.cardBg, opacity: 0.5 }} />
+                              <View style={{ paddingHorizontal: 2, zIndex: 10, flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                                 <Text style={{ color: theme.colors.primary, fontSize: 13, lineHeight: 15, textAlign: 'center', fontWeight: '800', width: '100%' }} numberOfLines={1}>{nextExerciseName.toLowerCase()}</Text>
+                              </View>
+                           </TouchableOpacity>
+
+                           {/* 2. FORA DO PLANO */}
+                           <TouchableOpacity activeOpacity={0.8} style={[styles.heroBlock, { width: 200, backgroundColor: 'transparent', borderColor: theme.colors.outline, borderStyle: 'dashed', height: 50, position: 'relative', overflow: 'hidden', justifyContent: 'center', marginBottom: 0 }]}>
+                              <View style={{ paddingHorizontal: 4, zIndex: 10, flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                                 <Text style={[styles.heroHeadline, { color: theme.colors.textSecondary, fontSize: 13, lineHeight: 15, textAlign: 'center' }]}>fora do plano</Text>
+                              </View>
+                           </TouchableOpacity>
+                        </View>
+
+                        {/* COLUNA DIREITA: CARGA */}
+                        <View style={{ alignItems: 'flex-end' }}>
+                           <TouchableOpacity
+                              activeOpacity={0.8}
+                              onPress={() => setIsWeightDialVisible(true)}
+                              style={{ backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.outline, borderRadius: 16, paddingHorizontal: 20, paddingVertical: 12, alignItems: 'center', minWidth: 110, height: 75, justifyContent: 'center' }}
+                           >
+                              <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 11, letterSpacing: 1, marginBottom: 2 }]}>
+                                 CARGA (KG)
+                              </Text>
+                              <Text style={{ color: theme.colors.primary, fontSize: 32, fontWeight: '900' }}>
+                                 {weightRecommended}
+                              </Text>
+                           </TouchableOpacity>
+                        </View>
+                     </View>
+                  </View>
+               </>
+            )}
+
+            {/* ---------------- CONFIG TAB ---------------- */}
+            {activeTab === 'Config' && (
+               <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 400, marginTop: 48, paddingBottom: 64 }}>
+                  <View style={{ width: 180, height: 180, alignItems: 'center', justifyContent: 'center', marginBottom: 32 }}>
+                     <Text style={{ fontSize: 130 }}>💪</Text>
+                     <View style={{ position: 'absolute', bottom: 12, right: 30, backgroundColor: theme.colors.pageBg, borderRadius: 12, padding: 6, transform: [{ rotate: '15deg' }] }}>
+                        <Smartphone size={46} color={theme.colors.primary} strokeWidth={3} />
+                     </View>
+                  </View>
+
+                  {isHighPrecision ? (
+                     <Text style={[styles.supportCopy, { color: theme.colors.textSecondary, textAlign: 'center', fontSize: 24, marginTop: 16, marginBottom: 48 }]}>
+                        Tlm no <Text style={{ color: theme.colors.textMain, fontWeight: 'bold' }}>braço</Text>
+                     </Text>
+                  ) : (
+                     <Text style={[styles.supportCopy, { color: theme.colors.primary, textAlign: 'center', fontSize: 16, marginTop: 16, marginBottom: 48, paddingHorizontal: 24 }]}>
+                        O dispositivo não precisa de estar ancorado ao músculo, mas as leituras perdem fidelidade matemática.
+                     </Text>
+                  )}
+
+                  <View style={{ alignSelf: 'center', borderRadius: 16, padding: 2, backgroundColor: theme.colors.outline, position: 'relative', width: '85%' }}>
+                     <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.primary, borderRadius: 16, animation: 'pulse 2s infinite' } as any} />
+
+                     <TouchableOpacity
+                        style={{ backgroundColor: isHighPrecision ? theme.colors.cardBg : theme.colors.pageBg, paddingVertical: 20, paddingHorizontal: 24, borderRadius: 15, alignItems: 'center', width: '100%' }}
+                        onPress={() => setIsInfoVisible(true)}
+                     >
+                        <Text style={{ fontSize: 17, fontWeight: '900', fontStyle: 'italic', letterSpacing: 2, color: isHighPrecision ? theme.colors.primary : theme.colors.textSecondary }}>
+                           {isHighPrecision ? "PRECISÃO MÁXIMA" : "PRECISÃO (DESLIGADA)"}
+                        </Text>
+                     </TouchableOpacity>
+                  </View>
                </View>
-            </View>
-         </View>
-         
-         {/* Telemetria Flutuante Absoluta: Canto Direito Total */}
-         <View style={{ position: 'absolute', top: -30, right: 0, flexDirection: 'row', gap: 24, alignItems: 'flex-start' }}>
-            {/* SÉRIES (Esquerda) */}
-            <View style={{ alignItems: 'flex-end' }}>
-               <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 16, letterSpacing: 1, marginBottom: 2 }]}>SÉRIE</Text>
-               <Text style={{ color: theme.colors.primary, fontSize: 32, fontWeight: '900', marginBottom: 12 }}>{currentSet}<Text style={{ fontSize: 16, color: theme.colors.textSecondary }}>/{targetSets}</Text></Text>
-               <View style={{ flexDirection: 'column', gap: 6 }}>
-                  {Array.from({ length: targetSets }).map((_, i) => (
-                     <View key={i} style={{ width: 32, height: 8, backgroundColor: i < currentSet ? theme.colors.primary : theme.colors.outline, borderRadius: 3 }} />
-                  ))}
-               </View>
-            </View>
+            )}
 
-            {/* REPS (Direita, antiga posição natural da série) */}
-            <View style={{ alignItems: 'flex-end' }}>
-               <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 16, letterSpacing: 1, marginBottom: 2 }]}>REPS</Text>
-               <Text style={{ color: theme.colors.textMain, fontSize: 32, fontWeight: '900', marginBottom: 12 }}>{currentRep}<Text style={{ fontSize: 16, color: theme.colors.textSecondary }}>/{targetReps}</Text></Text>
-               <View style={{ flexDirection: 'column', gap: 5 }}>
-                  {Array.from({ length: targetReps }).map((_, i) => (
-                     <View key={i} style={{ width: 32, height: 6, backgroundColor: i < currentRep ? theme.colors.textMain : theme.colors.outline, borderRadius: 3 }} />
-                  ))}
-               </View>
-            </View>
-         </View>
-      </View>
+            <View style={{ height: 100 }} />
+         </ScrollView>
 
-
-      <View style={{ alignItems: 'flex-start', marginVertical: 32, paddingHorizontal: 4 }}>
-         {isHighPrecision ? (
-            <Text style={[styles.supportCopy, { marginVertical: 0, marginBottom: 16, color: theme.colors.textSecondary, borderLeftColor: theme.colors.outline }]}>
-               Prenda o telemóvel no <Text style={{ color: theme.colors.textMain, fontWeight: 'bold' }}>braço</Text>.
-            </Text>
-         ) : (
-            <Text style={[styles.supportCopy, { marginVertical: 0, marginBottom: 16, color: theme.colors.primary, borderLeftColor: theme.colors.primary }]}>
-               O dispositivo não precisa de estar ancorado ao músculo, mas as leituras cinéticas perdem fidelidade matemática.
-            </Text>
-         )}
-         
-         <View style={{ alignSelf: 'flex-start', borderRadius: 12, padding: 1, backgroundColor: theme.colors.outline, position: 'relative' }}>
-            {/* Brilho de keyframes web injectado inline */}
-            <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.primary, borderRadius: 12, animation: 'pulse 2s infinite' } as any} />
-            
-            <TouchableOpacity 
-               style={{ backgroundColor: isHighPrecision ? theme.colors.cardBg : theme.colors.pageBg, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 11, alignItems: 'center', minWidth: 160 }}
-               onPress={() => setIsInfoVisible(true)}
-            >
-               <Text style={{ fontSize: 13, fontWeight: '800', fontStyle: 'italic', letterSpacing: 1, color: isHighPrecision ? theme.colors.primary : theme.colors.textSecondary }}>
-                  {isHighPrecision ? "PRECISÃO MÁXIMA" : "PRECISÃO (DESLIGADA)"}
-               </Text>
+         {/* Dock Bar Flutuante */}
+         <View style={[styles.dockBar, { backgroundColor: theme.colors.pageBg, borderTopColor: theme.colors.outline, position: 'fixed' as any }]}>
+            <TouchableOpacity style={styles.dockItem}>
+               <ClipboardList size={28} color={theme.colors.textSecondary} />
+               <Text style={[styles.dockText, { color: theme.colors.textSecondary }]}>Plano</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.dockItem} onPress={() => setActiveTab('Config')}>
+               <Settings size={28} color={activeTab === 'Config' ? theme.colors.primary : theme.colors.textSecondary} />
+               <Text style={[styles.dockText, { color: activeTab === 'Config' ? theme.colors.primary : theme.colors.textSecondary, fontWeight: activeTab === 'Config' ? '800' : 'normal' }]}>Config</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.dockItem} onPress={() => setActiveTab('Treino')}>
+               <Zap size={28} color={activeTab === 'Treino' ? theme.colors.primary : theme.colors.textSecondary} />
+               <Text style={[styles.dockText, { color: activeTab === 'Treino' ? theme.colors.primary : theme.colors.textSecondary, fontWeight: activeTab === 'Treino' ? '800' : 'normal' }]}>Treino</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.dockItem}>
+               <BarChart2 size={28} color={theme.colors.textSecondary} />
+               <Text style={[styles.dockText, { color: theme.colors.textSecondary }]}>Métricas</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.dockItem}>
+               <Lightbulb size={28} color={theme.colors.textSecondary} />
+               <Text style={[styles.dockText, { color: theme.colors.textSecondary }]}>Sugestões</Text>
             </TouchableOpacity>
          </View>
-      </View>
-      
-      <View style={{ height: 100 }} />
-      </ScrollView>
 
-      {/* Dock Bar Flutuante */}
-      <View style={[styles.dockBar, { backgroundColor: theme.colors.pageBg, borderTopColor: theme.colors.outline, position: 'fixed' as any }]}>
-         <TouchableOpacity style={styles.dockItem}>
-            <ClipboardList size={22} color={theme.colors.textSecondary} />
-            <Text style={[styles.dockText, { color: theme.colors.textSecondary }]}>Plano</Text>
-         </TouchableOpacity>
-         <TouchableOpacity style={styles.dockItem}>
-            <Settings size={22} color={theme.colors.textSecondary} />
-            <Text style={[styles.dockText, { color: theme.colors.textSecondary }]}>Config</Text>
-         </TouchableOpacity>
-         <TouchableOpacity style={styles.dockItem}>
-            <Zap size={22} color={theme.colors.primary} />
-            <Text style={[styles.dockText, { color: theme.colors.primary, fontWeight: '800' }]}>Treino</Text>
-         </TouchableOpacity>
-         <TouchableOpacity style={styles.dockItem}>
-            <BarChart2 size={22} color={theme.colors.textSecondary} />
-            <Text style={[styles.dockText, { color: theme.colors.textSecondary }]}>Métricas</Text>
-         </TouchableOpacity>
-         <TouchableOpacity style={styles.dockItem}>
-            <Lightbulb size={22} color={theme.colors.textSecondary} />
-            <Text style={[styles.dockText, { color: theme.colors.textSecondary }]}>Sugestões</Text>
-         </TouchableOpacity>
-      </View>
-
-      {/* Popup de Informação: Modo de Precisão */}
-      {isInfoVisible && (
-         <View style={{ position: 'fixed' as any, top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(10,10,10,0.85)', zIndex: 9999, justifyContent: 'center', alignItems: 'center', padding: 24, backdropFilter: 'blur(8px)' as any }}>
-            <View style={{ width: '100%', backgroundColor: theme.colors.pageBg, borderRadius: 24, padding: 24, borderWidth: 1, borderColor: theme.colors.outline }}>
-               <Text style={{ color: theme.colors.primary, fontSize: 18, fontWeight: '900', letterSpacing: 1, marginBottom: 16 }}>MODO DE PRECISÃO MAIS</Text>
-               <Text style={{ color: theme.colors.textSecondary, fontSize: 14, lineHeight: 22, marginBottom: 24 }}>
-                  <Text style={{ color: theme.colors.textMain, fontWeight: 'bold' }}>ATIVADO:</Text> Acionando esta opção ativará o radar cinético 3D, exigindo que o dispositivo esteja fixo com braçadeira no local de esforço.
-                  {'\n\n'}
-                  <Text style={{ color: theme.colors.textMain, fontWeight: 'bold' }}>DESATIVADO:</Text> O telemóvel não precisará ser mudado de local no corpo (e.g. pode ficar no bolso), mas perderá a precisão da medição de simetria e cinética.
-               </Text>
-               <TouchableOpacity 
-                  onPress={() => { setIsHighPrecision(true); setIsInfoVisible(false); }}
-                  style={{ alignSelf: 'stretch', backgroundColor: isHighPrecision ? theme.colors.cardBg : theme.colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: 'center', marginBottom: 12, borderWidth: 1, borderColor: theme.colors.primary }}
-               >
-                  <Text style={{ color: isHighPrecision ? theme.colors.primary : theme.colors.pageBg, fontWeight: 'bold', letterSpacing: 1, fontSize: 13 }}>{isHighPrecision ? 'MANTER ATIVADO' : 'ATIVAR PRECISÃO'}</Text>
-               </TouchableOpacity>
-               <TouchableOpacity 
-                  onPress={() => { setIsHighPrecision(false); setIsInfoVisible(false); }}
-                  style={{ alignSelf: 'stretch', backgroundColor: !isHighPrecision ? theme.colors.cardBg : 'transparent', paddingVertical: 16, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: theme.colors.outline }}
-               >
-                  <Text style={{ color: theme.colors.textSecondary, fontWeight: 'bold', letterSpacing: 1, fontSize: 13 }}>{isHighPrecision ? 'DESATIVAR PRECISÃO' : 'MANTER DESATIVADO'}</Text>
-               </TouchableOpacity>
+         {/* Popup de Informação: Modo de Precisão */}
+         {isInfoVisible && (
+            <View style={{ position: 'fixed' as any, top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(10,10,10,0.85)', zIndex: 9999, justifyContent: 'center', alignItems: 'center', padding: 24, backdropFilter: 'blur(8px)' as any }}>
+               <View style={{ width: '100%', backgroundColor: theme.colors.pageBg, borderRadius: 24, padding: 24, borderWidth: 1, borderColor: theme.colors.outline }}>
+                  <Text style={{ color: theme.colors.primary, fontSize: 18, fontWeight: '900', letterSpacing: 1, marginBottom: 16 }}>MODO DE PRECISÃO MAIS</Text>
+                  <Text style={{ color: theme.colors.textSecondary, fontSize: 14, lineHeight: 22, marginBottom: 24 }}>
+                     <Text style={{ color: theme.colors.textMain, fontWeight: 'bold' }}>ATIVADO:</Text> Acionando esta opção ativará o radar cinético 3D, exigindo que o dispositivo esteja fixo com braçadeira no local de esforço.
+                     {'\n\n'}
+                     <Text style={{ color: theme.colors.textMain, fontWeight: 'bold' }}>DESATIVADO:</Text> O telemóvel não precisará ser mudado de local no corpo (e.g. pode ficar no bolso), mas perderá a precisão da medição de simetria e cinética.
+                  </Text>
+                  <TouchableOpacity
+                     onPress={() => { setIsHighPrecision(true); setIsInfoVisible(false); }}
+                     style={{ alignSelf: 'stretch', backgroundColor: isHighPrecision ? theme.colors.cardBg : theme.colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: 'center', marginBottom: 12, borderWidth: 1, borderColor: theme.colors.primary }}
+                  >
+                     <Text style={{ color: isHighPrecision ? theme.colors.primary : theme.colors.pageBg, fontWeight: 'bold', letterSpacing: 1, fontSize: 13 }}>{isHighPrecision ? 'MANTER ATIVADO' : 'ATIVAR PRECISÃO'}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                     onPress={() => { setIsHighPrecision(false); setIsInfoVisible(false); }}
+                     style={{ alignSelf: 'stretch', backgroundColor: !isHighPrecision ? theme.colors.cardBg : 'transparent', paddingVertical: 16, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: theme.colors.outline }}
+                  >
+                     <Text style={{ color: theme.colors.textSecondary, fontWeight: 'bold', letterSpacing: 1, fontSize: 13 }}>{isHighPrecision ? 'DESATIVAR PRECISÃO' : 'MANTER DESATIVADO'}</Text>
+                  </TouchableOpacity>
+               </View>
             </View>
-         </View>
-      )}
-    </View>
-  );
+         )}
+         {/* Popup Dial: Ajuste de Carga Inercial */}
+         {isWeightDialVisible && (
+            <View style={{ position: 'fixed' as any, top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(10,10,10,0.92)', zIndex: 9999, justifyContent: 'center', alignItems: 'center', padding: 24, backdropFilter: 'blur(12px)' as any }}>
+               <View style={{ alignItems: 'center', width: '100%' }}>
+                  <Text style={{ color: theme.colors.textSecondary, fontSize: 16, fontWeight: '800', letterSpacing: 2, marginBottom: 32 }}>AJUSTAR CARGA</Text>
+
+                  {/* Container da Roda Matemático */}
+                  <View {...panResponder.panHandlers} style={{ width: 280, height: 280, borderRadius: 140, backgroundColor: theme.colors.cardBg, borderWidth: 2, borderColor: theme.colors.outline, alignItems: 'center', justifyContent: 'center', shadowColor: theme.colors.primary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.2, shadowRadius: 30, elevation: 20 }}>
+
+                     {/* Elemento visual rotativo */}
+                     <View style={{ position: 'absolute', width: '100%', height: '100%', alignItems: 'center', transform: [{ rotate: `${dialRotation}deg` }] }}>
+                        {/* Marcador superior (o ponto de aderência visual) */}
+                        <View style={{ width: 12, height: 24, backgroundColor: theme.colors.primary, borderRadius: 6, marginTop: 12, shadowColor: theme.colors.primary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 8 }} />
+                     </View>
+
+                     {/* Visor Numérico Fixo no Centro */}
+                     <View pointerEvents="none" style={{ alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.pageBg, width: 140, height: 140, borderRadius: 70, borderWidth: 1, borderColor: theme.colors.outline }}>
+                        <Text style={{ color: theme.colors.textMain, fontSize: 44, fontWeight: '900', letterSpacing: -1 }}>{weightRecommended}</Text>
+                        <Text style={{ color: theme.colors.textSecondary, fontSize: 14, fontWeight: '700', marginTop: 0 }}>KG</Text>
+                     </View>
+
+                  </View>
+
+                  <Text style={{ color: theme.colors.textSecondary, fontSize: 12, fontStyle: 'italic', letterSpacing: 1, marginTop: 32, opacity: 0.6 }}>Deslize em círculo para calibrar</Text>
+
+                  <TouchableOpacity
+                     onPress={() => setIsWeightDialVisible(false)}
+                     style={{ marginTop: 48, alignSelf: 'stretch', backgroundColor: theme.colors.primary, paddingVertical: 18, borderRadius: 16, alignItems: 'center' }}
+                  >
+                     <Text style={{ color: theme.colors.pageBg, fontWeight: 'bold', letterSpacing: 2, fontSize: 15 }}>CONFIRMAR</Text>
+                  </TouchableOpacity>
+               </View>
+            </View>
+         )}
+
+      </View>
+   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, paddingTop: 12 },
-  heroBlock: { borderRadius: 24, borderWidth: 1, marginBottom: 16 },
-  topInfo: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
-  badge: { paddingHorizontal: 10, paddingVertical: 4, borderLeftWidth: 2 },
-  badgeText: { fontSize: 16, fontFamily: 'monospace', fontWeight: '800', letterSpacing: 1 },
-  clockText: { fontSize: 16, fontFamily: 'monospace', fontWeight: 'bold', letterSpacing: 1 },
-  heroLayout: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 },
-  heroHeadline: { fontSize: 32, fontWeight: '500', fontStyle: 'italic', letterSpacing: 2, lineHeight: 34 },
-  metaText: { fontSize: 16, fontFamily: 'monospace', fontWeight: 'bold', letterSpacing: 1 },
-  meterWrapper: { width: 200, height: 200, justifyContent: 'center', alignItems: 'center' },
-  effortRingGlow: { position: 'absolute', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.6, shadowRadius: 15, elevation: 10 },
-  effortCenterLabel: { width: 200, height: 200, alignItems: 'center', justifyContent: 'center' },
-  effortValue: { fontSize: 56, fontWeight: '300', letterSpacing: -2, lineHeight: 60 },
-  effortUnit: { fontSize: 16, fontFamily: 'monospace', fontWeight: 'bold', marginTop: 4, textAlign: 'center', letterSpacing: 1 },
-  bottomBar: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'flex-end', marginTop: 32 },
-  mechBar: { width: 12, height: 12, transform: [{ skewX: '-15deg' }] },
-  supportCopy: { fontSize: 18, fontFamily: 'monospace', lineHeight: 24, marginVertical: 24 },
-  metricCard: { padding: 20, borderRadius: 20, borderWidth: 1 },
-  metricLabel: { fontSize: 16, fontFamily: 'monospace', fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase' },
-  metricValue: { fontSize: 24, fontWeight: '900' },
-  mainButton: { padding: 20, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  buttonText: { fontSize: 15, fontWeight: '900', fontStyle: 'italic', letterSpacing: 1 },
-  dockBar: { position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 999, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', height: 85, paddingBottom: 25, borderTopWidth: 1 },
-  dockItem: { alignItems: 'center', justifyContent: 'center', flex: 1, gap: 6, opacity: 0.9 },
-  dockText: { fontSize: 10, fontWeight: '600', letterSpacing: 0.5 }
+   container: { flex: 1, padding: 24, paddingTop: 12 },
+   heroBlock: { borderRadius: 24, borderWidth: 1, marginBottom: 16 },
+   topInfo: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+   badge: { paddingHorizontal: 10, paddingVertical: 4, borderLeftWidth: 2 },
+   badgeText: { fontSize: 16, fontFamily: 'monospace', fontWeight: '800', letterSpacing: 1 },
+   clockText: { fontSize: 16, fontFamily: 'monospace', fontWeight: 'bold', letterSpacing: 1 },
+   heroLayout: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 },
+   heroHeadline: { fontSize: 32, fontWeight: '500', fontStyle: 'italic', letterSpacing: 2, lineHeight: 34 },
+   metaText: { fontSize: 16, fontFamily: 'monospace', fontWeight: 'bold', letterSpacing: 1 },
+   meterWrapper: { width: 200, height: 200, justifyContent: 'center', alignItems: 'center' },
+   effortRingGlow: { position: 'absolute', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.6, shadowRadius: 15, elevation: 10 },
+   effortCenterLabel: { width: 200, height: 200, alignItems: 'center', justifyContent: 'center' },
+   effortValue: { fontSize: 56, fontWeight: '300', letterSpacing: -2, lineHeight: 60 },
+   effortUnit: { fontSize: 16, fontFamily: 'monospace', fontWeight: 'bold', marginTop: 4, textAlign: 'center', letterSpacing: 1 },
+   bottomBar: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'flex-end', marginTop: 32 },
+   mechBar: { width: 12, height: 12, transform: [{ skewX: '-15deg' }] },
+   supportCopy: { fontSize: 18, fontFamily: 'monospace', lineHeight: 24, marginVertical: 24 },
+   metricCard: { padding: 20, borderRadius: 20, borderWidth: 1 },
+   metricLabel: { fontSize: 16, fontFamily: 'monospace', fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase' },
+   metricValue: { fontSize: 24, fontWeight: '900' },
+   mainButton: { padding: 20, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+   buttonText: { fontSize: 15, fontWeight: '900', fontStyle: 'italic', letterSpacing: 1 },
+   dockBar: { position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 999, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', height: 100, paddingTop: 15, paddingBottom: 25, borderTopWidth: 1 },
+   dockItem: { alignItems: 'center', justifyContent: 'center', flex: 1, gap: 6, opacity: 0.9 },
+   dockText: { fontSize: 10, fontWeight: '600', letterSpacing: 0.5 }
 });
