@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Platform } from 'react-native';
+import { ClipboardList, Settings, Zap, BarChart2, Lightbulb } from 'lucide-react';
 import { useMotionTheme } from '../../../theme/useMotionTheme';
 import supinoBg from '../../../assets/supino_reto.png';
 import { useMotionStore, selectors } from '../../../store/useMotionStore';
@@ -22,9 +23,9 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
   const [isRunning, setIsRunning] = useState(false);
   const [seconds, setSeconds] = useState(0); 
   const [isHighPrecision, setIsHighPrecision] = useState(true);
-  const [weightRecommended, setWeightRecommended] = useState(65);
+  const [isInfoVisible, setIsInfoVisible] = useState(false);
+  const [weightRecommended, setWeightRecommended] = useState(120);
   const MAX_SECONDS = (implicitSession?.durationMinutes || 45) * 60;
-  
   // -------------------------------------------------------------
   // KINEMATICS ENGINE (O "Conta-Rotações")
   // -------------------------------------------------------------
@@ -117,7 +118,8 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
   const exerciseDetails = "(Barra ou Halteres)";
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: theme.colors.pageBg }]} showsVerticalScrollIndicator={false}>
+    <View style={{ flex: 1, minHeight: '100vh', backgroundColor: theme.colors.pageBg }}>
+      <ScrollView style={[styles.container, { backgroundColor: 'transparent' }]} showsVerticalScrollIndicator={false}>
       
       {/* Cockpit Principal: Cartão de Apresentação */}
       <View style={[styles.heroBlock, { backgroundColor: theme.colors.cardBg, borderColor: theme.colors.outline, minHeight: 'auto', position: 'relative', overflow: 'hidden' }]}>
@@ -143,15 +145,15 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
                 <Text style={[{ fontSize: 18, color: theme.colors.primary, fontFamily: 'monospace', fontWeight: 'bold', marginTop: 4 }]}>
                    {exerciseDetails}
                 </Text>
-                
-                {isRunning && <Text style={[styles.metaText, { color: theme.colors.primary, marginTop: 12 }]}>■ EM EXECUÇÃO</Text>}
               </View>
             </View>
          </View>
       </View>
 
+
+
       {/* Relógio Cinético Livre de Cartão */}
-      <View style={{ marginVertical: 48, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ marginVertical: 48, alignItems: 'center', justifyContent: 'center', width: '100%', position: 'relative' }}>
          <View style={[styles.meterWrapper, { width: 260, height: 260 }]}>
            <TouchableOpacity activeOpacity={0.8} onPress={handleClockPress}>
              {renderRing(kinematics.effortValue, 260, 10)}
@@ -171,80 +173,139 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
            )}
          </View>
 
-         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', alignSelf: 'stretch', marginTop: 40 }}>
-            <Text style={[styles.metaText, { color: theme.colors.textSecondary, letterSpacing: 2, fontSize: 14 }]}>
-               PESO RECOMENDADO <Text style={{ color: theme.colors.textMain, fontSize: 18 }}> {weightRecommended}KG</Text>
+         <View style={{ alignSelf: 'stretch', marginTop: -40, alignItems: 'flex-start' }}>
+            <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 16, letterSpacing: 1 }]}>
+               CARGA{'\n'}RECOMENDADA
             </Text>
             
-            <View style={{ flexDirection: 'row', gap: 24 }}>
-               <TouchableOpacity onPress={() => setWeightRecommended((w: number) => Math.max(0, w - 2.5))}>
-                  <Text style={[styles.metaText, { color: theme.colors.textSecondary, fontSize: 28, fontWeight: '300' }]}>-</Text>
-               </TouchableOpacity>
-               <TouchableOpacity onPress={() => setWeightRecommended((w: number) => w + 2.5)}>
-                  <Text style={[styles.metaText, { color: theme.colors.primary, fontSize: 28, fontWeight: '300' }]}>+</Text>
-               </TouchableOpacity>
+            <View style={{ marginTop: 2, alignItems: 'flex-start' }}>
+               <Text style={{ color: theme.colors.textMain, fontSize: 24, fontWeight: '900' }}>
+                  {weightRecommended} <Text style={{ fontSize: 16, color: theme.colors.textSecondary }}>KG</Text>
+               </Text>
+               
+               <View style={{ flexDirection: 'row', gap: 6, height: 36, marginTop: 10, width: 90 }}>
+                  <TouchableOpacity 
+                     style={{ flex: 1, backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.outline, borderRadius: 8, alignItems: 'center', justifyContent: 'center' }}
+                     onPress={() => setWeightRecommended((w: number) => Math.max(0, w - 2.5))}
+                  >
+                     <Text style={[styles.metaText, { color: theme.colors.textSecondary, fontSize: 20, fontWeight: '400', marginTop: -2 }]}>-</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                     style={{ flex: 1, backgroundColor: theme.colors.primary, borderRadius: 8, alignItems: 'center', justifyContent: 'center' }}
+                     onPress={() => setWeightRecommended((w: number) => w + 2.5)}
+                  >
+                     <Text style={[styles.metaText, { color: theme.colors.pageBg, fontSize: 20, fontWeight: '700', marginTop: -2 }]}>+</Text>
+                  </TouchableOpacity>
+               </View>
+            </View>
+         </View>
+         
+         {/* Telemetria Flutuante Absoluta: Canto Direito Total */}
+         <View style={{ position: 'absolute', top: -30, right: 0, flexDirection: 'row', gap: 24, alignItems: 'flex-start' }}>
+            {/* SÉRIES (Esquerda) */}
+            <View style={{ alignItems: 'flex-end' }}>
+               <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 16, letterSpacing: 1, marginBottom: 2 }]}>SÉRIE</Text>
+               <Text style={{ color: theme.colors.primary, fontSize: 32, fontWeight: '900', marginBottom: 12 }}>{currentSet}<Text style={{ fontSize: 16, color: theme.colors.textSecondary }}>/{targetSets}</Text></Text>
+               <View style={{ flexDirection: 'column', gap: 6 }}>
+                  {Array.from({ length: targetSets }).map((_, i) => (
+                     <View key={i} style={{ width: 32, height: 8, backgroundColor: i < currentSet ? theme.colors.primary : theme.colors.outline, borderRadius: 3 }} />
+                  ))}
+               </View>
+            </View>
+
+            {/* REPS (Direita, antiga posição natural da série) */}
+            <View style={{ alignItems: 'flex-end' }}>
+               <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 16, letterSpacing: 1, marginBottom: 2 }]}>REPS</Text>
+               <Text style={{ color: theme.colors.textMain, fontSize: 32, fontWeight: '900', marginBottom: 12 }}>{currentRep}<Text style={{ fontSize: 16, color: theme.colors.textSecondary }}>/{targetReps}</Text></Text>
+               <View style={{ flexDirection: 'column', gap: 5 }}>
+                  {Array.from({ length: targetReps }).map((_, i) => (
+                     <View key={i} style={{ width: 32, height: 6, backgroundColor: i < currentRep ? theme.colors.textMain : theme.colors.outline, borderRadius: 3 }} />
+                  ))}
+               </View>
             </View>
          </View>
       </View>
 
 
-      {/* Cartões Adicionais Convertidos em Dashboards de Desempenho Físico */}
-      <View style={{ gap: 16, marginBottom: 32 }}>
-         <View style={{ flexDirection: 'row', gap: 16 }}>
-            <View style={[styles.metricCard, { flex: 1, backgroundColor: theme.colors.cardBg, borderColor: theme.colors.outline }]}>
-              <Text style={[styles.metricLabel, { color: theme.colors.textSecondary }]}>REPETIÇÕES</Text>
-              <Text style={[styles.metricValue, { color: theme.colors.textMain, marginTop: 8, fontSize: 32 }]}>
-                 {currentRep}/{targetReps}
-              </Text>
-              <View style={{ flexDirection: 'row', gap: 4, marginTop: 16, flexWrap: 'wrap' }}>
-                 {Array.from({ length: targetReps }).map((_, i) => (
-                   <View key={i} style={[styles.mechBar, { width: 12, height: 12, backgroundColor: i < currentRep ? theme.colors.primary : theme.colors.outline }]} />
-                 ))}
-              </View>
-            </View>
-
-            <View style={[styles.metricCard, { flex: 1, backgroundColor: theme.colors.cardBg, borderColor: theme.colors.outline }]}>
-              <Text style={[styles.metricLabel, { color: theme.colors.textSecondary }]}>SÉRIES</Text>
-              <Text style={[styles.metricValue, { color: theme.colors.primary, marginTop: 8, fontSize: 32 }]}>
-                 {currentSet}/{targetSets}
-              </Text>
-              <View style={{ flexDirection: 'row', gap: 6, marginTop: 16, flexWrap: 'wrap' }}>
-                 {Array.from({ length: targetSets }).map((_, i) => (
-                   <View key={i} style={[styles.mechBar, { width: 28, height: 28, backgroundColor: i < currentSet ? theme.colors.primary : theme.colors.outline }]} />
-                 ))}
-              </View>
-            </View>
+      <View style={{ alignItems: 'flex-start', marginVertical: 32, paddingHorizontal: 4 }}>
+         {isHighPrecision ? (
+            <Text style={[styles.supportCopy, { marginVertical: 0, marginBottom: 16, color: theme.colors.textSecondary, borderLeftColor: theme.colors.outline }]}>
+               Prenda o telemóvel no <Text style={{ color: theme.colors.textMain, fontWeight: 'bold' }}>braço</Text>.
+            </Text>
+         ) : (
+            <Text style={[styles.supportCopy, { marginVertical: 0, marginBottom: 16, color: theme.colors.primary, borderLeftColor: theme.colors.primary }]}>
+               O dispositivo não precisa de estar ancorado ao músculo, mas as leituras cinéticas perdem fidelidade matemática.
+            </Text>
+         )}
+         
+         <View style={{ alignSelf: 'flex-start', borderRadius: 12, padding: 1, backgroundColor: theme.colors.outline, position: 'relative' }}>
+            {/* Brilho de keyframes web injectado inline */}
+            <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.primary, borderRadius: 12, animation: 'pulse 2s infinite' } as any} />
+            
+            <TouchableOpacity 
+               style={{ backgroundColor: isHighPrecision ? theme.colors.cardBg : theme.colors.pageBg, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 11, alignItems: 'center', minWidth: 160 }}
+               onPress={() => setIsInfoVisible(true)}
+            >
+               <Text style={{ fontSize: 13, fontWeight: '800', fontStyle: 'italic', letterSpacing: 1, color: isHighPrecision ? theme.colors.primary : theme.colors.textSecondary }}>
+                  {isHighPrecision ? "PRECISÃO MÁXIMA" : "PRECISÃO (DESLIGADA)"}
+               </Text>
+            </TouchableOpacity>
          </View>
       </View>
-
-      {isHighPrecision ? (
-         <Text style={[styles.supportCopy, { color: theme.colors.textSecondary, borderLeftColor: theme.colors.outline }]}>
-            Neste exercício deve prender o seu telemóvel no braço, uma vez que é nele que se fará maior força e movimento.
-         </Text>
-      ) : (
-         <Text style={[styles.supportCopy, { color: theme.colors.primary, borderLeftColor: theme.colors.primary }]}>
-            O dispositivo não precisa de estar ancorado ao músculo, mas as leituras cinéticas perdem fidelidade matemática.
-         </Text>
-      )}
-
-      <TouchableOpacity 
-         style={[styles.mainButton, { backgroundColor: isHighPrecision ? theme.colors.cardBg : theme.colors.primary, borderWidth: isHighPrecision ? 1 : 0, borderColor: theme.colors.primary }]}
-         onPress={() => setIsHighPrecision(!isHighPrecision)}
-      >
-         <Text style={[styles.buttonText, { color: isHighPrecision ? theme.colors.primary : theme.colors.pageBg }]}>
-            {isHighPrecision ? "DESATIVAR PRECISÃO MÁXIMA" : "ATIVAR PRECISÃO MÁXIMA"}
-         </Text>
-      </TouchableOpacity>
-
-      <Text style={{ fontSize: 14, color: theme.colors.textSecondary, textAlign: 'center', marginTop: 16, lineHeight: 22, paddingHorizontal: 16 }}>
-         {isHighPrecision 
-            ? "Acionando esta opção o telemóvel não precisará ser mudado de local no corpo (e.g. pode ficar no bolso), mas perderá a precisão da medição de simetria e cinética."
-            : "Acionando esta opção ativará o radar cinético 3D, exigindo que o dispositivo esteja fixo com braçadeira no local de esforço."
-         }
-      </Text>
       
       <View style={{ height: 100 }} />
-    </ScrollView>
+      </ScrollView>
+
+      {/* Dock Bar Flutuante */}
+      <View style={[styles.dockBar, { backgroundColor: theme.colors.pageBg, borderTopColor: theme.colors.outline, position: 'fixed' as any }]}>
+         <TouchableOpacity style={styles.dockItem}>
+            <ClipboardList size={22} color={theme.colors.textSecondary} />
+            <Text style={[styles.dockText, { color: theme.colors.textSecondary }]}>Plano</Text>
+         </TouchableOpacity>
+         <TouchableOpacity style={styles.dockItem}>
+            <Settings size={22} color={theme.colors.textSecondary} />
+            <Text style={[styles.dockText, { color: theme.colors.textSecondary }]}>Config</Text>
+         </TouchableOpacity>
+         <TouchableOpacity style={styles.dockItem}>
+            <Zap size={22} color={theme.colors.primary} />
+            <Text style={[styles.dockText, { color: theme.colors.primary, fontWeight: '800' }]}>Treino</Text>
+         </TouchableOpacity>
+         <TouchableOpacity style={styles.dockItem}>
+            <BarChart2 size={22} color={theme.colors.textSecondary} />
+            <Text style={[styles.dockText, { color: theme.colors.textSecondary }]}>Métricas</Text>
+         </TouchableOpacity>
+         <TouchableOpacity style={styles.dockItem}>
+            <Lightbulb size={22} color={theme.colors.textSecondary} />
+            <Text style={[styles.dockText, { color: theme.colors.textSecondary }]}>Sugestões</Text>
+         </TouchableOpacity>
+      </View>
+
+      {/* Popup de Informação: Modo de Precisão */}
+      {isInfoVisible && (
+         <View style={{ position: 'fixed' as any, top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(10,10,10,0.85)', zIndex: 9999, justifyContent: 'center', alignItems: 'center', padding: 24, backdropFilter: 'blur(8px)' as any }}>
+            <View style={{ width: '100%', backgroundColor: theme.colors.pageBg, borderRadius: 24, padding: 24, borderWidth: 1, borderColor: theme.colors.outline }}>
+               <Text style={{ color: theme.colors.primary, fontSize: 18, fontWeight: '900', letterSpacing: 1, marginBottom: 16 }}>MODO DE PRECISÃO MAIS</Text>
+               <Text style={{ color: theme.colors.textSecondary, fontSize: 14, lineHeight: 22, marginBottom: 24 }}>
+                  <Text style={{ color: theme.colors.textMain, fontWeight: 'bold' }}>ATIVADO:</Text> Acionando esta opção ativará o radar cinético 3D, exigindo que o dispositivo esteja fixo com braçadeira no local de esforço.
+                  {'\n\n'}
+                  <Text style={{ color: theme.colors.textMain, fontWeight: 'bold' }}>DESATIVADO:</Text> O telemóvel não precisará ser mudado de local no corpo (e.g. pode ficar no bolso), mas perderá a precisão da medição de simetria e cinética.
+               </Text>
+               <TouchableOpacity 
+                  onPress={() => { setIsHighPrecision(true); setIsInfoVisible(false); }}
+                  style={{ alignSelf: 'stretch', backgroundColor: isHighPrecision ? theme.colors.cardBg : theme.colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: 'center', marginBottom: 12, borderWidth: 1, borderColor: theme.colors.primary }}
+               >
+                  <Text style={{ color: isHighPrecision ? theme.colors.primary : theme.colors.pageBg, fontWeight: 'bold', letterSpacing: 1, fontSize: 13 }}>{isHighPrecision ? 'MANTER ATIVADO' : 'ATIVAR PRECISÃO'}</Text>
+               </TouchableOpacity>
+               <TouchableOpacity 
+                  onPress={() => { setIsHighPrecision(false); setIsInfoVisible(false); }}
+                  style={{ alignSelf: 'stretch', backgroundColor: !isHighPrecision ? theme.colors.cardBg : 'transparent', paddingVertical: 16, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: theme.colors.outline }}
+               >
+                  <Text style={{ color: theme.colors.textSecondary, fontWeight: 'bold', letterSpacing: 1, fontSize: 13 }}>{isHighPrecision ? 'DESATIVAR PRECISÃO' : 'MANTER DESATIVADO'}</Text>
+               </TouchableOpacity>
+            </View>
+         </View>
+      )}
+    </View>
   );
 };
 
@@ -270,5 +331,8 @@ const styles = StyleSheet.create({
   metricLabel: { fontSize: 16, fontFamily: 'monospace', fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase' },
   metricValue: { fontSize: 24, fontWeight: '900' },
   mainButton: { padding: 20, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  buttonText: { fontSize: 15, fontWeight: '900', fontStyle: 'italic', letterSpacing: 1 }
+  buttonText: { fontSize: 15, fontWeight: '900', fontStyle: 'italic', letterSpacing: 1 },
+  dockBar: { position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 999, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', height: 85, paddingBottom: 25, borderTopWidth: 1 },
+  dockItem: { alignItems: 'center', justifyContent: 'center', flex: 1, gap: 6, opacity: 0.9 },
+  dockText: { fontSize: 10, fontWeight: '600', letterSpacing: 0.5 }
 });

@@ -87,7 +87,10 @@ export const MotionRoot: React.FC<MotionRootProps> = ({ rawShellContext }) => {
   );
 
   return (
-    <View style={[styles.root, { backgroundColor: theme.colors.pageBg }]}>
+    <View style={[styles.root, { 
+       backgroundColor: theme.colors.pageBg,
+       ...(!universe && { backgroundImage: 'linear-gradient(to bottom, #e2e8f0 0%, #ffffff 100%)' })
+    } as any]}>
       {/* HEADER PREMIUM */}
       <View style={[styles.header, { backgroundColor: 'transparent' }]}>
         <TouchableOpacity 
