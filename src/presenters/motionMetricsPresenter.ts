@@ -1,11 +1,17 @@
 import { AggregationResult, calculateStreak } from '../services/motionMetricsAggregationService';
-import { generateBodyMap } from '../services/motionBodyMapService';
+import { calculateBodyMapLighting } from '../services/motionBodyMapLightingService';
 import { MotionBodyMap3DService, BodyMap3DViewModel } from '../services/motionBodyMap3DService';
 import { MotionMetricsViewModel, MetricsTimeWindow } from '../contracts/metricsModels';
 import { EffortConfig } from '../config/effortConfig';
 
 export interface MotionMetricsViewModelExtended extends MotionMetricsViewModel {
-  bodyMap3D: BodyMap3DViewModel;
+  bodyMap3D?: BodyMap3DViewModel;
+  
+  // V4.1 Muscle Architecture
+  dominantMuscleGroup?: string;
+  muscleTotalsByPeriod?: Record<string, number>;
+  bodyMapZonesActive?: string[];
+  bodyMapIntensityByZone?: Record<string, number>;
 }
 
 const mapIntensity = (i: string | undefined): string => {
@@ -75,11 +81,13 @@ export const presentMetrics = (
   const executedSessions = visualState === 'preview' ? (plannedSessions > 0 ? Math.round(plannedSessions * 0.8) : 12) : total;
   const hasPlanComparison = plannedSessions > 0 || visualState === 'preview';
 
-  // Compose Body Map
-  let bodyMap = generateBodyMap(agg.typeCounts);
+  // Compose Body Map using Quantitative Muscle Lighting
+  const bodyMapLighting = calculateBodyMapLighting(visualState === 'preview' ? { quads: 1000, core: 500 } : agg.muscleTotals);
+  
+  let bodyMap: any = null; // Keeping signature if legacy 3D requires it, but overriding its nature
   if (visualState === 'preview') {
     bodyMap = {
-      dominantSystemLabel: 'Carga Muscular e Força',
+      dominantSystemLabel: 'Estruturas Inferiores (Preview)',
       zones: [
         { zoneId: 'sys-musc', label: 'Carga Muscular e Força', intensityLevel: 'high' as const },
         { zoneId: 'sys-core', label: 'Estabilidade Base / Core', intensityLevel: 'medium' as const }
@@ -140,7 +148,13 @@ export const presentMetrics = (
       isBeastMode: visualState === 'preview' ? false : (agg.totalEffortScore / Math.max(1, agg.totalEffortTarget) > EffortConfig.beastThreshold)
     },
     bodyMap,
-    bodyMap3D: MotionBodyMap3DService.extract3DRegionsFromModel(bodyMap, visualState),
+    bodyMap3D: bodyMap ? MotionBodyMap3DService.extract3DRegionsFromModel(bodyMap, visualState) : undefined,
+    
+    // V4.1 Muscle Architecture Explicit Exposure
+    dominantMuscleGroup: bodyMapLighting.dominantMuscleGroup,
+    muscleTotalsByPeriod: agg.muscleTotals,
+    bodyMapZonesActive: bodyMapLighting.activeZones,
+    bodyMapIntensityByZone: bodyMapLighting.bodyMapIntensityByZone,
     trainingProfile: {
       distributionByType: typeArray,
       distributionByIntensity: intArray

@@ -1,3 +1,5 @@
+import { MuscleGroupKey, BodyMapZoneKey, MuscleDistribution } from './muscleTypes';
+
 export type Universe = 'Balance' | 'Performance Boost' | 'Momentum';
 
 export type CurrentPhase = 'Reativação' | 'Retoma' | 'Manutenção' | 'Progressão' | 'Recuperação';
@@ -96,11 +98,22 @@ export interface WorkoutWellnessFeedback {
 export interface KinematicExerciseLog {
   exerciseId: string;
   exerciseType: string;
+  exerciseLabel?: string;
+  executionScore?: number;
   repetitionCount: number;
   seriesCount: number;
   averageExecutionPercent: number;
   totalScore: number;
-  muscleDistribution: string[];
+
+  /** @deprecated Transitional array of vague zones. Treat as read-only. */
+  muscleDistribution?: string[];
+
+  // V4.1 Quantitative Baseline Freeze
+  muscleDistributionResolved?: MuscleDistribution;
+  primaryMuscleGroup?: MuscleGroupKey | string;
+  bodyMapZones?: BodyMapZoneKey[];
+  dictionaryVersion?: string;
+  scoringVersion?: string;
 }
 
 export interface ConfirmedWorkoutRecord {
@@ -128,10 +141,11 @@ export interface ConfirmedWorkoutRecord {
   totalExecutionScore?: number;
   averageExecutionPercent?: number;
   executedExercises?: KinematicExerciseLog[];
-  dominantMuscleGroup?: string;
+  dominantMuscleGroup?: MuscleGroupKey | string;
   dictionaryVersion?: string;
   scoringVersion?: string;
-  muscleDistributionResolved?: string[];
+  muscleDistributionResolved?: MuscleDistribution;
+  bodyMapLightingResolved?: Record<BodyMapZoneKey, number> | Record<string, number>;
 }
 
 export type PlacementRecommendation = 'forearm' | 'upper-arm' | 'thigh' | 'waist' | 'pocket' | 'surface' | 'none';

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Platform, PanResponder, Dimensions, Animated } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Platform, PanResponder, useWindowDimensions, Animated, Dimensions } from 'react-native';
 import { ClipboardList, Settings, Zap, BarChart2, Lightbulb, Smartphone, ChevronDown, ChevronUp, MapPin } from 'lucide-react';
 import { useMotionTheme } from '../../../theme/useMotionTheme';
 import supinoBg from '../../../assets/supino_reto.png';
@@ -7,11 +7,20 @@ import aberturaBg from '../../../assets/abertura_plana.png';
 import { useMotionStore, selectors } from '../../../store/useMotionStore';
 import { useMotionExecutionRuntimeFacade } from '../../../facades/useMotionExecutionRuntimeFacade';
 import { useMotionKinematicsFacade } from '../../../facades/useMotionKinematicsFacade';
+import { useMotionTrainingFacade } from '../../../facades/useMotionTrainingFacade';
 import { MotionBottomNav } from '../../components/MotionBottomNav';
 import { MotionProgressScreen } from '../MotionProgress';
 
 export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
    const theme = useMotionTheme();
+   const { width: winW } = useWindowDimensions();
+   
+   const isSm = winW < 380;
+   const isLg = winW >= 420;
+   const trainingHeroPaddingMobile = isSm ? 16 : isLg ? 24 : 20;
+   const trainingHeroTitleSize = isSm ? 22 : isLg ? 28 : 25;
+   const trainingDialSizeMobile = isSm ? 220 : isLg ? 270 : 250;
+   const trainingBottomCardHeightMobile = isSm ? 56 : isLg ? 68 : 64;
 
    // Obter Sessão Corrente
    const plan = useMotionStore(selectors.selectPlan);
@@ -177,154 +186,203 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
    const currentSet = activeBlockIndex > -1 ? activeBlockIndex + 1 : 1;
    const targetSets = totalBlocks > 0 ? totalBlocks : 4;
 
-   // Para efeitos estritos de simulação de mockup tático solicitado:
-   const exerciseName = "Supino Reto";
-   const exerciseGroup = "Peitoral Geral / Médio";
-   const exerciseDetails = "(Barra ou Halteres)";
-   const nextExerciseName = "Abertura Plana";
+   // Integração do Motor Dedutivo de Plano de Treino
+   const trainingEngine = useMotionTrainingFacade();
+   const engineState = trainingEngine.model;
+
+   // Resolução dos dados injetados na UI de forma totalmente reativa:
+   const exerciseName = engineState.currentExercise?.name || "Fora do Plano";
+   const exerciseGroup = engineState.currentExercise?.groupTarget || "Livre";
+   const exerciseDetails = engineState.currentExercise?.details || "";
+   const nextExerciseName = engineState.nextExercise?.name || "Fim Previsto";
 
    return (
-      <View style={{ flex: 1, height: Platform.OS === 'web' ? '100vh' : '100%', overflow: 'hidden', backgroundColor: theme.colors.pageBg }}>
-         <ScrollView style={[styles.container, { backgroundColor: 'transparent' }]} showsVerticalScrollIndicator={false}>
+      <View style={{ flex: 1, height: Platform.OS === 'web' ? '100dvh' : '100%', overflow: 'hidden', backgroundColor: theme.colors.pageBg }}>
+         <ScrollView style={[styles.container, { backgroundColor: 'transparent' }]} contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
 
             {/* ---------------- TREINO TAB ---------------- */}
             {activeTab === 'Treino' && (
-               <>
-                  {/* Cockpit Principal: Cartão de Apresentação */}
-                  <View style={[styles.heroBlock, { backgroundColor: theme.colors.cardBg, borderColor: theme.colors.outline, minHeight: 'auto', position: 'relative', overflow: 'hidden' }]}>
-      
-                     {/* Background Atético Full-Bleed do Cartão */}
-                     <Image
-                        source={supinoBg}
-                        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', opacity: 0.3, resizeMode: 'cover' }}
-                     />
-                     <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundImage: `radial-gradient(circle, transparent 20%, ${theme.colors.cardBg} 95%)` } as any} />
-      
-                     {/* Conteúdo Textual Frontal */}
-                     <View style={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 24, zIndex: 10 }}>
-                        <View style={styles.topInfo}>
-                           <View style={[styles.badge, { backgroundColor: theme.colors.primary + '20', borderLeftColor: theme.colors.primary }]}>
-                              <Text style={[styles.badgeText, { color: theme.colors.primary }]}>{exerciseGroup.toUpperCase()}</Text>
-                           </View>
-                           <Text style={{ color: theme.colors.textSecondary, fontSize: 13, letterSpacing: 1, fontStyle: 'italic', opacity: 0.7 }}>instruções</Text>
+               <View style={{ flex: 1, display: 'flex', flexDirection: 'column', paddingBottom: 24 }}>
+                  
+                  {engineState.planStatus === 'no_plan' && (
+                     <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 64 }}>
+                        <Text style={[styles.heroHeadline, { color: theme.colors.textSecondary, textAlign: 'center' }]}>SEM PLANO GERADO</Text>
+                     </View>
+                  )}
+
+                  {engineState.planStatus === 'rest_day' && (
+                     <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 64 }}>
+                        <Text style={[styles.heroHeadline, { color: theme.colors.textSecondary, textAlign: 'center' }]}>DIA DE DESCANSO</Text>
+                     </View>
+                  )}
+
+                  {engineState.planStatus === 'completed' && (
+                     <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 64 }}>
+                        <View style={{ width: 100, height: 100, borderRadius: 50, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
+                           <ClipboardList color={theme.colors.pageBg} size={48} />
                         </View>
-      
-                        <View style={styles.heroLayout}>
-                           <View style={{ flex: 1 }}>
-                              <Text style={[styles.heroHeadline, { color: theme.colors.textMain }]}>{exerciseName.toUpperCase()}</Text>
-                              <Text style={[{ fontSize: 18, color: theme.colors.primary, fontFamily: 'monospace', fontWeight: 'bold', marginTop: 4 }]}>
-                                 {exerciseDetails}
-                              </Text>
-                           </View>
+                        <Text style={[styles.heroHeadline, { color: theme.colors.textMain, textAlign: 'center', marginBottom: 12 }]}>PLANO CONCLUÍDO</Text>
+                        <Text style={{ color: theme.colors.textSecondary, fontSize: 16, textAlign: 'center', lineHeight: 24, marginBottom: 48 }}>O treino principal de hoje encontra-se finalizado com sucesso estrutural.</Text>
+                        
+                        <View style={{ width: '100%', gap: 16 }}>
+                           {engineState.sessionVariant?.extraSessionAllowed && (
+                              <TouchableOpacity onPress={() => {}} style={{ padding: 18, borderRadius: 16, backgroundColor: theme.colors.cardBg, borderColor: theme.colors.outline, borderWidth: 1, alignItems: 'center' }}>
+                                 <Text style={{ color: theme.colors.textMain, fontSize: 14, fontWeight: 'bold', letterSpacing: 1 }}>SESSÃO EXTRA</Text>
+                              </TouchableOpacity>
+                           )}
+                           <TouchableOpacity onPress={() => {}} style={{ padding: 18, borderRadius: 16, backgroundColor: 'transparent', alignItems: 'center' }}>
+                              <Text style={{ color: theme.colors.textSecondary, fontSize: 14, fontWeight: 'bold' }}>TERMINAR AGORA</Text>
+                           </TouchableOpacity>
                         </View>
                      </View>
-                  </View>
-                  {/* Relógio Cinético Livre de Cartão */}
-                  <View style={{ marginVertical: 16, marginTop: 32, alignItems: 'center', justifyContent: 'center', width: '100%', position: 'relative' }}>
-                     <View style={[styles.meterWrapper, { width: 320, height: 320, transform: [{ translateY: 100 }] }]}>
-                        <TouchableOpacity activeOpacity={0.8} onPress={handleClockPress}>
-                           {renderRing(kinematics.effortValue, 320, 12)}
-                           <View style={[styles.effortCenterLabel, { width: 320, height: 320 }]}>
-                              <Text style={[styles.effortValue, { color: theme.colors.primary, fontSize: 76, lineHeight: 82 }]}>{formatTime(seconds)}</Text>
-                              <Text style={[styles.effortUnit, { color: theme.colors.primary, marginTop: 8 }]}>
-                                 {isRunning ? 'EM CURSO' : 'TOCAR/INICIAR'}
-                              </Text>
-                              {!isRunning && (
-                                 <Animated.Text style={{ opacity: pulseAnim, color: theme.colors.textSecondary, fontSize: 13, marginTop: 12, letterSpacing: 1, position: 'absolute', bottom: 50 }}>
-                                    mova {getTargetLimb()}
-                                 </Animated.Text>
-                              )}
-                           </View>
-                        </TouchableOpacity>
+                  )}
 
-                        {kinematics.isSimulated && isRunning && (
-                           <Text style={{ fontSize: 14, color: theme.colors.warning, position: 'absolute', bottom: -24, fontFamily: 'monospace', fontWeight: 'bold' }}>MOCK SENSOR</Text>
-                        )}
-                        {kinematics.source === 'unsupported' && isRunning && (
-                           <Text style={{ fontSize: 14, color: theme.colors.textSecondary, position: 'absolute', bottom: -24, fontFamily: 'monospace', fontWeight: 'bold' }}>S/ SENSOR DETETADO</Text>
-                        )}
-                     </View>
-
-
-                     {/* Localização do Sensor: Canto Esquerdo Total */}
-                     <View style={{ position: 'absolute', top: -30, left: 0, alignItems: 'flex-start' }}>
-                        <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 16, letterSpacing: 1, marginBottom: 4 }]}>SENSOR</Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                           <Smartphone size={18} color={theme.colors.textSecondary} />
-                           <Text style={{ color: theme.colors.primary, fontSize: 16, fontWeight: '800' }}>
-                              <Text style={{ color: theme.colors.textSecondary, fontWeight: '500' }}>Tlm no</Text> braço
-                           </Text>
-                        </View>
-                     </View>
-
-                     {/* Telemetria Flutuante Absoluta: Canto Direito Total */}
-                     <View style={{ position: 'absolute', top: -30, right: 0, flexDirection: 'row', gap: 24, alignItems: 'flex-start' }}>
-                        {/* SÉRIES (Esquerda) */}
-                        <View style={{ alignItems: 'flex-end' }}>
-                           <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 16, letterSpacing: 1, marginBottom: 2 }]}>SÉRIE</Text>
-                           <Text style={{ color: theme.colors.primary, fontSize: 32, fontWeight: '900', marginBottom: 12 }}>{currentSet}<Text style={{ fontSize: 16, color: theme.colors.textSecondary }}>/{targetSets}</Text></Text>
-                           <View style={{ flexDirection: 'column', gap: 6 }}>
-                              {Array.from({ length: targetSets }).map((_, i) => (
-                                 <View key={i} style={{ width: 32, height: 8, backgroundColor: i < currentSet ? theme.colors.primary : theme.colors.outline, borderRadius: 3 }} />
-                              ))}
-                           </View>
-                        </View>
-
-                        {/* REPS (Direita, antiga posição natural da série) */}
-                        <View style={{ alignItems: 'flex-end' }}>
-                           <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 16, letterSpacing: 1, marginBottom: 2 }]}>REPS</Text>
-                           <Text style={{ color: theme.colors.textMain, fontSize: 32, fontWeight: '900', marginBottom: 12 }}>{currentRep}<Text style={{ fontSize: 16, color: theme.colors.textSecondary }}>/{targetReps}</Text></Text>
-                           <View style={{ flexDirection: 'column', gap: 5 }}>
-                              {Array.from({ length: targetReps }).map((_, i) => (
-                                 <View key={i} style={{ width: 32, height: 6, backgroundColor: i < currentRep ? theme.colors.textMain : theme.colors.outline, borderRadius: 3 }} />
-                              ))}
-                           </View>
-                        </View>
-                     </View>
-                  </View>
-                  {/* --- ÁREA DE RODAPÉ TÁTICO --- */}
-                  <View style={{ marginTop: 120, paddingBottom: 24 }}>
-                     <Text style={{ color: theme.colors.textSecondary, fontSize: 13, fontStyle: 'italic', letterSpacing: 1, marginLeft: 4, marginBottom: 8 }}>exercício seguinte</Text>
-
-                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        {/* COLUNA ESQUERDA: NAVEGAÇÃO */}
-                        <View style={{ flexDirection: 'column', gap: 12 }}>
-                           {/* 1. A SEGUIR */}
-                           <TouchableOpacity activeOpacity={0.8} style={[styles.heroBlock, { width: 200, backgroundColor: theme.colors.cardBg, borderColor: theme.colors.outline, height: 75, position: 'relative', overflow: 'hidden', justifyContent: 'center', marginBottom: 0 }]}>
-                              {/* Digital Crop via CSS Transform */}
-                              <Image source={aberturaBg} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', opacity: 0.6, resizeMode: 'cover', transform: [{ scale: 1.6 }, { translateY: -5 }] }} />
-                              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.cardBg, opacity: 0.2 }} />
-                              <View style={{ paddingHorizontal: 2, zIndex: 10, flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                                 <Text style={{ color: theme.colors.primary, fontSize: 16, lineHeight: 18, textAlign: 'center', fontWeight: '900', letterSpacing: 0, width: '100%', fontStyle: 'italic' }} numberOfLines={2}>{nextExerciseName.toLowerCase()}</Text>
+                   {engineState.planStatus !== 'completed' && engineState.planStatus !== 'no_plan' && engineState.planStatus !== 'rest_day' && (
+                        <View style={{ flex: 1, flexDirection: 'column' }}>
+                           {/* === BANDA SUPERIOR === */}
+                           <View style={{ flexShrink: 0 }}>
+                              {/* 1. HERO BLOCK */}
+                              <View style={[styles.heroBlock, { backgroundColor: theme.colors.cardBg, borderColor: theme.colors.outline, minHeight: 'auto', position: 'relative', overflow: 'hidden', marginBottom: 0 }]}>
+                              <Image
+                                 source={supinoBg}
+                                 style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', opacity: 0.3, resizeMode: 'cover' }}
+                              />
+                              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundImage: `radial-gradient(circle, transparent 20%, ${theme.colors.cardBg} 95%)` } as any} />
+                              
+                              <View style={{ paddingHorizontal: trainingHeroPaddingMobile, paddingTop: trainingHeroPaddingMobile, paddingBottom: trainingHeroPaddingMobile, zIndex: 10 }}>
+                                 <View style={styles.topInfo}>
+                                    <View style={[styles.badge, { backgroundColor: theme.colors.primary + '20', borderLeftColor: theme.colors.primary, paddingVertical: 2, paddingHorizontal: 8 }]}>
+                                       <Text style={[styles.badgeText, { color: theme.colors.primary, fontSize: 13 }]}>{exerciseGroup.toUpperCase()}</Text>
+                                    </View>
+                                    <Text style={{ color: theme.colors.textSecondary, fontSize: 12, letterSpacing: 1, fontStyle: 'italic', opacity: 0.7 }}>instruções</Text>
+                                 </View>
+                                 <View style={[styles.heroLayout, { marginTop: 12 }]}>
+                                    <View style={{ flex: 1 }}>
+                                       <Text style={[styles.heroHeadline, { color: theme.colors.textMain, fontSize: trainingHeroTitleSize, lineHeight: trainingHeroTitleSize + 2 }]}>{exerciseName.toUpperCase()}</Text>
+                                       <Text style={[{ fontSize: 15, color: theme.colors.primary, fontFamily: 'monospace', fontWeight: 'bold', marginTop: 2 }]}>
+                                          {exerciseDetails}
+                                       </Text>
+                                    </View>
+                                 </View>
                               </View>
-                           </TouchableOpacity>
+                           </View>
 
-                           {/* 2. FORA DO PLANO */}
-                           <TouchableOpacity activeOpacity={0.8} style={[styles.heroBlock, { width: 200, backgroundColor: 'transparent', borderColor: theme.colors.outline, borderStyle: 'dashed', height: 50, position: 'relative', overflow: 'hidden', justifyContent: 'center', marginBottom: 0 }]}>
-                              <View style={{ paddingHorizontal: 4, zIndex: 10, flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                                 <Text style={[styles.heroHeadline, { color: theme.colors.textSecondary, fontSize: 13, lineHeight: 15, textAlign: 'center' }]}>fora do plano</Text>
+                           {/* 2. TOP STATS (Sensor, Séries, Reps) - Relativo e Alinhado */}
+                           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 8 }}>
+                              {/* Sensor */}
+                              <View style={{ flex: 1 }}>
+                                 <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 13, letterSpacing: 1, marginBottom: 4 }]}>SENSOR</Text>
+                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                    <Smartphone size={16} color={theme.colors.textSecondary} />
+                                    <Text style={{ color: theme.colors.primary, fontSize: 15, fontWeight: '800' }}>
+                                       <Text style={{ color: theme.colors.textSecondary, fontWeight: '500' }}>Tlm no</Text> braço
+                                    </Text>
+                                 </View>
                               </View>
-                           </TouchableOpacity>
-                        </View>
 
-                        {/* COLUNA DIREITA: CARGA */}
-                        <View style={{ alignItems: 'flex-end' }}>
-                           <TouchableOpacity
-                              activeOpacity={0.8}
-                              onPress={() => setIsWeightDialVisible(true)}
-                              style={{ backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.outline, borderRadius: 16, paddingHorizontal: 20, paddingVertical: 12, alignItems: 'center', minWidth: 110, height: 75, justifyContent: 'center' }}
-                           >
-                              <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 11, letterSpacing: 1, marginBottom: 2 }]}>
-                                 CARGA (KG)
-                              </Text>
-                              <Text style={{ color: theme.colors.primary, fontSize: 32, fontWeight: '900' }}>
-                                 {weightRecommended}
-                              </Text>
-                           </TouchableOpacity>
+                              {/* Telemetria de Esforço */}
+                              <View style={{ flexDirection: 'row', gap: 20 }}>
+                                 <View style={{ alignItems: 'flex-end' }}>
+                                    <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 13, letterSpacing: 1, marginBottom: 2 }]}>SÉRIE</Text>
+                                    <Text style={{ color: theme.colors.primary, fontSize: 26, fontWeight: '900', marginBottom: 8 }}>{currentSet}<Text style={{ fontSize: 14, color: theme.colors.textSecondary }}>/{targetSets}</Text></Text>
+                                    <View style={{ flexDirection: 'column', gap: 4 }}>
+                                       {Array.from({ length: targetSets }).map((_, i) => (
+                                          <View key={i} style={{ width: 28, height: 6, backgroundColor: i < currentSet ? theme.colors.primary : theme.colors.outline, borderRadius: 2 }} />
+                                       ))}
+                                    </View>
+                                 </View>
+
+                                 <View style={{ alignItems: 'flex-end' }}>
+                                    <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 13, letterSpacing: 1, marginBottom: 2 }]}>REPS</Text>
+                                    <Text style={{ color: theme.colors.textMain, fontSize: 26, fontWeight: '900', marginBottom: 8 }}>{currentRep}<Text style={{ fontSize: 14, color: theme.colors.textSecondary }}>/{targetReps}</Text></Text>
+                                    <View style={{ flexDirection: 'column', gap: 4 }}>
+                                       {Array.from({ length: targetReps }).map((_, i) => (
+                                          <View key={i} style={{ width: 28, height: 5, backgroundColor: i < currentRep ? theme.colors.textMain : theme.colors.outline, borderRadius: 2 }} />
+                                       ))}
+                                    </View>
+                                 </View>
+                              </View>
+                           </View>
+                           {/* === FIM BANDA SUPERIOR === */}
+
+                           {/* === BANDA CENTRAL === */}
+                           {/* 3. CÍRCULO CENTRAL (Conta-Movimento) */}
+                           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', width: '100%', marginVertical: isSm ? 16 : isLg ? 32 : 24, minHeight: trainingDialSizeMobile + 20 }}>
+                              <View style={[styles.meterWrapper, { width: trainingDialSizeMobile, height: trainingDialSizeMobile }]}>
+                                 <TouchableOpacity activeOpacity={0.8} onPress={handleClockPress}>
+                                    {renderRing(kinematics.effortValue, trainingDialSizeMobile, 10)}
+                                    <View style={[styles.effortCenterLabel, { width: trainingDialSizeMobile, height: trainingDialSizeMobile }]}>
+                                       <Text style={[styles.effortValue, { color: theme.colors.primary, fontSize: 62, lineHeight: 68 }]}>{formatTime(seconds)}</Text>
+                                       <Text style={[styles.effortUnit, { color: theme.colors.primary, marginTop: 4, fontSize: 13 }]}>
+                                          {isRunning ? 'EM CURSO' : 'TOCAR/INICIAR'}
+                                       </Text>
+                                       {!isRunning && (
+                                          <Animated.Text style={{ opacity: pulseAnim, color: theme.colors.textSecondary, fontSize: 12, marginTop: 8, letterSpacing: 1, position: 'absolute', bottom: 40 }}>
+                                             mova {getTargetLimb()}
+                                          </Animated.Text>
+                                       )}
+                                    </View>
+                                 </TouchableOpacity>
+
+                                 {kinematics.isSimulated && isRunning && (
+                                    <Text style={{ fontSize: 12, color: theme.colors.warning, position: 'absolute', bottom: -20, fontFamily: 'monospace', fontWeight: 'bold' }}>MOCK SENSOR</Text>
+                                 )}
+                                 {kinematics.source === 'unsupported' && isRunning && (
+                                    <Text style={{ fontSize: 12, color: theme.colors.textSecondary, position: 'absolute', bottom: -20, fontFamily: 'monospace', fontWeight: 'bold' }}>S/ SENSOR</Text>
+                                 )}
+                              </View>
+                           </View>
+
+                           {/* === BANDA INFERIOR === */}
+                           {/* 4. ÁREA DE RODAPÉ TÁTICO */}
+                           <View style={{ flexShrink: 0 }}>
+                              <Text style={{ color: theme.colors.textSecondary, fontSize: 12, fontStyle: 'italic', letterSpacing: 1, marginLeft: 4, marginBottom: 8 }}>exercício seguinte</Text>
+
+                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'stretch' }}>
+                                 {/* COLUNA ESQUERDA: NAVEGAÇÃO (56-62%) */}
+                                 <View style={{ width: '60%' }}>
+                                    {/* A SEGUIR */}
+                                    <TouchableOpacity activeOpacity={0.8} style={[styles.heroBlock, { backgroundColor: theme.colors.cardBg, borderColor: theme.colors.outline, height: trainingBottomCardHeightMobile, position: 'relative', overflow: 'hidden', justifyContent: 'center', marginBottom: 0 }]}>
+                                       <Image source={aberturaBg} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', opacity: 0.6, resizeMode: 'cover', transform: [{ scale: 1.6 }, { translateY: -5 }] }} />
+                                       <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.cardBg, opacity: 0.2 }} />
+                                       <View style={{ paddingHorizontal: 8, zIndex: 10, flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                                          <Text style={{ color: theme.colors.primary, fontSize: isSm ? 13 : 14, lineHeight: isSm ? 15 : 16, textAlign: 'center', fontWeight: '900', fontStyle: 'italic' }} numberOfLines={2}>{nextExerciseName.toLowerCase()}</Text>
+                                       </View>
+                                    </TouchableOpacity>
+                                 </View>
+
+                                 {/* COLUNA DIREITA: CARGA (26-32%) */}
+                                 <View style={{ width: '32%' }}>
+                                    <TouchableOpacity
+                                       activeOpacity={0.8}
+                                       onPress={() => setIsWeightDialVisible(true)}
+                                       style={{ backgroundColor: theme.colors.cardBg, borderWidth: 1, borderColor: theme.colors.outline, borderRadius: 16, paddingHorizontal: 4, alignItems: 'center', height: trainingBottomCardHeightMobile, justifyContent: 'center' }}
+                                    >
+                                       <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: isSm ? 9 : 10, letterSpacing: 1, marginBottom: 1 }]}>
+                                          CARGA KG
+                                       </Text>
+                                       <Text style={{ color: theme.colors.primary, fontSize: isSm ? 22 : 26, fontWeight: '900' }}>
+                                          {weightRecommended}
+                                       </Text>
+                                    </TouchableOpacity>
+                                 </View>
+                              </View>
+
+                              {/* CTA SECUNDÁRIO ABAIXO - DISCRETO */}
+                              <TouchableOpacity 
+                                 activeOpacity={0.6} 
+                                 onPress={() => trainingEngine.actions.finishSession()}
+                                 style={{ marginTop: 24, alignSelf: 'center', paddingVertical: 8, paddingHorizontal: 16 }}>
+                                 <Text style={{ color: theme.colors.textSecondary, fontSize: 12, letterSpacing: 1, textDecorationLine: 'underline', opacity: 0.5 }}>Interromper e Forçar Fim do Plano</Text>
+                              </TouchableOpacity>
+                           </View>
+
+                           </View>
+
                         </View>
-                     </View>
-                  </View>
-               </>
+                   )}
+
+               </View>
             )}
 
             {/* ---------------- CONFIG TAB ---------------- */}

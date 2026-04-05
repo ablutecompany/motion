@@ -7,6 +7,8 @@ import { ExecutionMode, WorkoutConfirmationState, WorkoutOutcome, PendingWorkout
 import { workoutInferenceService } from '../services/workoutInferenceService';
 import { motionRetryQueueService } from '../services/motionRetryQueueService';
 import { motionHostFeedbackService } from '../services/motionHostFeedbackService';
+import { aggregateKinematicMuscleScores } from '../services/motionMuscleAggregationService';
+import { calculateBodyMapLighting } from '../services/motionBodyMapLightingService';
 import { trackEvent, MotionEvents } from '../analytics/events';
 
 export interface PendingEnrichmentTarget {
@@ -277,6 +279,17 @@ export const useMotionExecutionFacade = () => {
     if (result.success) {
       trackEvent(MotionEvents.WRITEBACK_SENT);
       if (state === 'confirmed') {
+        const newRecordBaseScore = Math.floor(Math.random() * 800) + 1000;
+        
+        // Simulação de exercícios executados na sessão para o Aggregation Service congelar
+        const rawExercises: any[] = [
+          { exerciseId: 'chest_press', exerciseType: 'strength', repetitionCount: 50, seriesCount: 4, averageExecutionPercent: 100, executionScore: 400, muscleDistribution: [] },
+          { exerciseId: 'leg_press', exerciseType: 'strength', repetitionCount: 100, seriesCount: 5, averageExecutionPercent: 92, executionScore: 800, muscleDistribution: [] }
+        ];
+
+        const { enrichedExercises, sessionTotals } = aggregateKinematicMuscleScores(rawExercises);
+        const lighting = calculateBodyMapLighting(sessionTotals.totals);
+
         const newRecord: ConfirmedWorkoutRecord = {
           id: sessionId,
           source: 'session',
@@ -286,19 +299,19 @@ export const useMotionExecutionFacade = () => {
           isHistoricalContext: isHistory,
           syncStatus: isDemo ? 'local_only' : 'synced',
           enrichmentStatus: 'not_requested',
-          // V4.0 Kinematic Score Tracking Mock
-          totalExecutionScore: Math.floor(Math.random() * 800) + 1000, // Random between 1000 and 1800 (1500 target allows occasional Beast modes)
+          // V4.0 Kinematic Score Tracking com Congelamento determinístico
+          totalExecutionScore: newRecordBaseScore, 
           averageExecutionPercent: 95,
-          dictionaryVersion: '1.0',
-          scoringVersion: '1.0',
-          executedExercises: [
-            { exerciseId: 'pushup', exerciseType: 'strength', repetitionCount: 50, seriesCount: 4, averageExecutionPercent: 100, totalScore: 400, muscleDistribution: ['upper-front', 'systemic', 'core'] },
-            { exerciseId: 'squat', exerciseType: 'strength', repetitionCount: 100, seriesCount: 5, averageExecutionPercent: 92, totalScore: 800, muscleDistribution: ['lower-front', 'systemic', 'core'] }
-          ],
-          dominantMuscleGroup: 'lower-front',
+          dictionaryVersion: '2.0',
+          scoringVersion: '4.1',
+          executedExercises: enrichedExercises,
+          muscleDistributionResolved: sessionTotals.totals,
+          dominantMuscleGroup: sessionTotals.dominantMuscleGroup,
+          bodyMapLightingResolved: lighting.bodyMapIntensityByZone,
+          
           wellnessImpact: {
              interestingOutcome: outcome.interesting.consistency,
-             usefulOutcome: 'Registo contínuo garantido',
+             usefulOutcome: 'Registo contínuo garantido com body map',
              displayState: isDemo ? 'local_only' : 'sent'
           },
           wellnessFeedback: result.success && result.feedback ? result.feedback : {

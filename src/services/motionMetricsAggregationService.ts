@@ -1,5 +1,6 @@
 import { ConfirmedWorkoutRecord } from '../contracts/types';
 import { MetricsTimeWindow } from '../contracts/metricsModels';
+import { extractLegacySafeSessionTotals } from './motionMuscleAggregationService';
 
 export interface AggregationResult {
   periodDays: number;
@@ -11,6 +12,7 @@ export interface AggregationResult {
   buckets: { label: string; count: number }[];
   totalEffortScore: number;
   totalEffortTarget: number;
+  muscleTotals: Record<string, number>;
 }
 
 export const aggregateWorkoutHistory = (history: ConfirmedWorkoutRecord[], timeWindow: MetricsTimeWindow): AggregationResult => {
@@ -37,6 +39,7 @@ export const aggregateWorkoutHistory = (history: ConfirmedWorkoutRecord[], timeW
   }));
   const bucketDays = periodDays / numBuckets;
   let totalEffortScore = 0;
+  const muscleTotals: Record<string, number> = {};
 
   filtered.forEach(r => {
     // Estimativa crua se falhar base: default de 30min ou 45min se tiver wellness impact
@@ -63,6 +66,13 @@ export const aggregateWorkoutHistory = (history: ConfirmedWorkoutRecord[], timeW
     if (bIndex >= 0 && bIndex < numBuckets) {
       buckets[bIndex].count += 1;
     }
+
+    // Kinematic Tracking: Safely extract legacy or new frozen absolute distributions
+    const extractedMuscles = extractLegacySafeSessionTotals(r);
+    Object.entries(extractedMuscles).forEach(([group, score]) => {
+      muscleTotals[group] = (muscleTotals[group] || 0) + score;
+    });
+
   });
 
   return {
@@ -74,7 +84,8 @@ export const aggregateWorkoutHistory = (history: ConfirmedWorkoutRecord[], timeW
     activeDates,
     buckets,
     totalEffortScore,
-    totalEffortTarget: filtered.length > 0 ? (filtered.length * 1500) : 1500 // Fallback estimate
+    totalEffortTarget: filtered.length > 0 ? (filtered.length * 1500) : 1500, // Fallback estimate
+    muscleTotals
   };
 };
 
