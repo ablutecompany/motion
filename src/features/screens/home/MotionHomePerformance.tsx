@@ -17,10 +17,10 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
    
    const isSm = winW < 380;
    const isLg = winW >= 420;
-   const trainingHeroPaddingMobile = isSm ? 16 : isLg ? 24 : 20;
-   const trainingHeroTitleSize = isSm ? 22 : isLg ? 28 : 25;
-   const trainingDialSizeMobile = isSm ? 220 : isLg ? 270 : 250;
-   const trainingBottomCardHeightMobile = isSm ? 56 : isLg ? 68 : 64;
+   const trainingHeroPaddingMobile = isSm ? 12 : isLg ? 20 : 16;
+   const trainingHeroTitleSize = isSm ? 18 : isLg ? 24 : 20;
+   const trainingDialSizeMobile = isSm ? 180 : isLg ? 240 : 200;
+   const trainingBottomCardHeightMobile = isSm ? 48 : isLg ? 60 : 52;
 
    // Obter Sessão Corrente
    const plan = useMotionStore(selectors.selectPlan);
@@ -252,7 +252,7 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
                               <View style={{ paddingHorizontal: trainingHeroPaddingMobile, paddingTop: trainingHeroPaddingMobile, paddingBottom: trainingHeroPaddingMobile, zIndex: 10 }}>
                                  <View style={styles.topInfo}>
                                     <View style={[styles.badge, { backgroundColor: theme.colors.primary + '20', borderLeftColor: theme.colors.primary, paddingVertical: 2, paddingHorizontal: 8 }]}>
-                                       <Text style={[styles.badgeText, { color: theme.colors.primary, fontSize: 13 }]}>{exerciseGroup.toUpperCase()}</Text>
+                                       <Text style={[styles.badgeText, { color: theme.colors.primary, fontSize: 10 }]}>{exerciseGroup.toUpperCase()}</Text>
                                     </View>
                                     <Text style={{ color: theme.colors.textSecondary, fontSize: 12, letterSpacing: 1, fontStyle: 'italic', opacity: 0.7 }}>instruções</Text>
                                  </View>
@@ -271,33 +271,33 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 8 }}>
                               {/* Sensor */}
                               <View style={{ flex: 1 }}>
-                                 <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 13, letterSpacing: 1, marginBottom: 4 }]}>SENSOR</Text>
+                                 <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 10, letterSpacing: 1, marginBottom: 4 }]}>SENSOR</Text>
                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                    <Smartphone size={16} color={theme.colors.textSecondary} />
-                                    <Text style={{ color: theme.colors.primary, fontSize: 15, fontWeight: '800' }}>
+                                    <Smartphone size={14} color={theme.colors.textSecondary} />
+                                    <Text style={{ color: theme.colors.primary, fontSize: 12, fontWeight: '800' }}>
                                        <Text style={{ color: theme.colors.textSecondary, fontWeight: '500' }}>Tlm no</Text> braço
                                     </Text>
                                  </View>
                               </View>
 
                               {/* Telemetria de Esforço */}
-                              <View style={{ flexDirection: 'row', gap: 20 }}>
+                              <View style={{ flexDirection: 'row', gap: 16 }}>
                                  <View style={{ alignItems: 'flex-end' }}>
-                                    <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 13, letterSpacing: 1, marginBottom: 2 }]}>SÉRIE</Text>
-                                    <Text style={{ color: theme.colors.primary, fontSize: 26, fontWeight: '900', marginBottom: 8 }}>{currentSet}<Text style={{ fontSize: 14, color: theme.colors.textSecondary }}>/{targetSets}</Text></Text>
-                                    <View style={{ flexDirection: 'column', gap: 4 }}>
+                                    <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 10, letterSpacing: 1, marginBottom: 2 }]}>SÉRIE</Text>
+                                    <Text style={{ color: theme.colors.primary, fontSize: 18, fontWeight: '900', marginBottom: 4 }}>{currentSet}<Text style={{ fontSize: 11, color: theme.colors.textSecondary }}>/{targetSets}</Text></Text>
+                                    <View style={{ flexDirection: 'row', gap: 2 }}>
                                        {Array.from({ length: targetSets }).map((_, i) => (
-                                          <View key={i} style={{ width: 28, height: 6, backgroundColor: i < currentSet ? theme.colors.primary : theme.colors.outline, borderRadius: 2 }} />
+                                          <View key={i} style={{ width: 8, height: 4, backgroundColor: i < currentSet ? theme.colors.primary : theme.colors.outline, borderRadius: 2 }} />
                                        ))}
                                     </View>
                                  </View>
 
                                  <View style={{ alignItems: 'flex-end' }}>
-                                    <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 13, letterSpacing: 1, marginBottom: 2 }]}>REPS</Text>
-                                    <Text style={{ color: theme.colors.textMain, fontSize: 26, fontWeight: '900', marginBottom: 8 }}>{currentRep}<Text style={{ fontSize: 14, color: theme.colors.textSecondary }}>/{targetReps}</Text></Text>
-                                    <View style={{ flexDirection: 'column', gap: 4 }}>
+                                    <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 10, letterSpacing: 1, marginBottom: 2 }]}>REPS</Text>
+                                    <Text style={{ color: theme.colors.textMain, fontSize: 18, fontWeight: '900', marginBottom: 4 }}>{currentRep}<Text style={{ fontSize: 11, color: theme.colors.textSecondary }}>/{targetReps}</Text></Text>
+                                    <View style={{ flexDirection: 'row', gap: 2, flexWrap: 'wrap', width: 64, justifyContent: 'flex-end' }}>
                                        {Array.from({ length: targetReps }).map((_, i) => (
-                                          <View key={i} style={{ width: 28, height: 5, backgroundColor: i < currentRep ? theme.colors.textMain : theme.colors.outline, borderRadius: 2 }} />
+                                          <View key={i} style={{ width: 8, height: 4, backgroundColor: i < currentRep ? theme.colors.textMain : theme.colors.outline, borderRadius: 2 }} />
                                        ))}
                                     </View>
                                  </View>

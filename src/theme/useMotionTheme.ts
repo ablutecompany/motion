@@ -177,20 +177,20 @@ export const useMotionTheme = (): MotionThemeTokens => {
     return {
       colors: baseColors as any, // Cast to avoid deep nesting checks against the mapped type
       metrics: {
-        radiusCore: themeConfig.radiusCore,
-        radiusCard: themeConfig.radiusCard,
+        radiusCore: themeConfig.radiusCore === 24 ? 16 : themeConfig.radiusCore,
+        radiusCard: themeConfig.radiusCard === 40 ? 24 : themeConfig.radiusCard === 32 ? 20 : themeConfig.radiusCard,
         radiusPill: 999,
-        spacingX: 24,
-        spacingY: 32,
+        spacingX: 16, // Reduzido de 24
+        spacingY: 20, // Reduzido de 32
       },
       typography: {
-        hero: { fontSize: 36, fontWeight: '800', color: baseColors.textMain, letterSpacing: -1.2, fontFamily: themeConfig.fontFamilyBase },
-        heroLabel: { fontSize: 11, fontWeight: '800', color: baseColors.accent, textTransform: 'uppercase', letterSpacing: 2, fontFamily: 'monospace' },
-        title: { fontSize: 20, fontWeight: '800', color: baseColors.textMain, letterSpacing: -0.5, textTransform: isDark ? 'uppercase' : 'none', fontFamily: themeConfig.fontFamilyBase },
-        subtitle: { fontSize: 14, fontWeight: '500', color: baseColors.textSecondary, lineHeight: 20, fontFamily: themeConfig.fontFamilyBase },
-        label: { fontSize: 10, fontWeight: '800', color: baseColors.textMuted, textTransform: 'uppercase', letterSpacing: 1.5, fontFamily: isDark ? 'monospace' : themeConfig.fontFamilyBase },
-        body: { fontSize: 15, color: baseColors.textMain, lineHeight: 24, fontWeight: '500', fontFamily: themeConfig.fontFamilyBase },
-        caption: { fontSize: 13, color: baseColors.textMuted, fontWeight: '500', fontFamily: themeConfig.fontFamilyBase },
+        hero: { fontSize: 28, fontWeight: '800', color: baseColors.textMain, letterSpacing: -1, fontFamily: themeConfig.fontFamilyBase },
+        heroLabel: { fontSize: 10, fontWeight: '800', color: baseColors.accent, textTransform: 'uppercase', letterSpacing: 1.5, fontFamily: 'monospace' },
+        title: { fontSize: 18, fontWeight: '800', color: baseColors.textMain, letterSpacing: -0.5, textTransform: isDark ? 'uppercase' : 'none', fontFamily: themeConfig.fontFamilyBase },
+        subtitle: { fontSize: 13, fontWeight: '500', color: baseColors.textSecondary, lineHeight: 18, fontFamily: themeConfig.fontFamilyBase },
+        label: { fontSize: 10, fontWeight: '800', color: baseColors.textMuted, textTransform: 'uppercase', letterSpacing: 1.2, fontFamily: isDark ? 'monospace' : themeConfig.fontFamilyBase },
+        body: { fontSize: 14, color: baseColors.textMain, lineHeight: 22, fontWeight: '500', fontFamily: themeConfig.fontFamilyBase },
+        caption: { fontSize: 12, color: baseColors.textMuted, fontWeight: '500', fontFamily: themeConfig.fontFamilyBase },
         fontFamilyBase: themeConfig.fontFamilyBase
       },
       shadows: {

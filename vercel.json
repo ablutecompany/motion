@@ -2,5 +2,24 @@
   "buildCommand": "cd harness_temp && npm run build",
   "outputDirectory": "harness_temp/dist",
   "installCommand": "npm install --legacy-peer-deps && cd harness_temp && npm install --legacy-peer-deps",
-  "framework": "vite"
+  "framework": "vite",
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        },
+        {
+          "key": "Expires",
+          "value": "0"
+        }
+      ]
+    }
+  ]
 }
