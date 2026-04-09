@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Platform, PanResponder, useWindowDimensions, Animated, Dimensions } from 'react-native';
-import { ClipboardList, Settings, Zap, BarChart2, Lightbulb, Smartphone, ChevronDown, ChevronUp, MapPin } from 'lucide-react';
+import { ClipboardList, Smartphone, MapPin } from 'lucide-react';
 import { useMotionTheme } from '../../../theme/useMotionTheme';
 import supinoBg from '../../../assets/supino_reto.png';
 import aberturaBg from '../../../assets/abertura_plana.png';
@@ -10,6 +10,7 @@ import { useMotionKinematicsFacade } from '../../../facades/useMotionKinematicsF
 import { useMotionTrainingFacade } from '../../../facades/useMotionTrainingFacade';
 import { MotionBottomNav } from '../../components/MotionBottomNav';
 import { MotionProgressScreen } from '../MotionProgress';
+import type { RepPhase } from '../../../engines/repQualityEngine';
 
 export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
    const theme = useMotionTheme();
@@ -145,41 +146,81 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
       return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
    };
 
+   // ── NOVA LÓGICA: cor baseada em qualidade técnica, não velocidade ─────────
    const getEffortColor = () => {
       if (!kinematics.isAvailable) return theme.colors.outline;
-      switch (kinematics.effortState) {
-         case 'redline': return '#ff4757'; // Coral quente intenso, não erro crítico
-         case 'high': return '#ffa502';    // Tangerina quente
-         case 'medium': return theme.colors.primary; // Cyan Base vivo
-         case 'low':
-         default: return theme.colors.primary + '80'; // Cyan discreto/apagado
+      // qualityTier: idle → partial → good → excellent
+      switch (kinematics.qualityTier) {
+         case 'excellent': return '#ff4757'; // vermelho quente — execução perfeita
+         case 'good':      return '#ffa502'; // laranja/tangerina — boa execução
+         case 'partial':   return theme.colors.primary; // cyan vivo — execução parcial
+         case 'idle':
+         default:          return theme.colors.primary + '55'; // cyan apagado — sem execução
       }
    };
 
-   const renderRing = (effortValue: number, size: number, stroke: number) => {
-      const radius = size / 2;
-      // Escala de esforço 0.0 - 1.0 (onde 100 max = 1.0)
-      const progress = effortValue / 100;
-      const p = Math.max(0, Math.min(1, progress));
-      const rightRot = Math.min(p * 360, 180);
-      const leftRot = Math.max(p * 360 - 180, 0);
+   // Label de fase para o centro do anel
+   const getPhaseLabel = (): string => {
+      if (!isRunning) return 'TOCAR/INICIAR';
+      switch (kinematics.currentPhase) {
+         case 'eccen':  return 'DESCIDA';
+         case 'bottom': return 'FUNDO';
+         case 'concen': return 'SUBIDA';
+         case 'top':    return 'TOPO';
+         case 'idle':
+         default:       return 'EM CURSO';
+      }
+   };
 
+   // ── ANEL: usa visualGaugeProgress (qualidade), não rawMotion ────────────
+   const renderRing = (gaugeValue: number, size: number, stroke: number) => {
+      const radius = size / 2;
+      // gaugeValue: 0..100 baseado em executionQualityScore
+      const p = Math.max(0, Math.min(1, gaugeValue / 100));
+      const rightRot = Math.min(p * 360, 180);
+      const leftRot  = Math.max(p * 360 - 180, 0);
       const activeColor = getEffortColor();
 
       return (
          <View style={[styles.effortRingGlow, { width: size, height: size, borderRadius: radius, shadowColor: activeColor, transform: [{ rotate: '180deg' }] }]}>
-            <View style={{ position: 'absolute', width: size, height: size, borderRadius: radius, borderWidth: stroke, borderColor: theme.colors.outline, opacity: 0.3 }} />
+            {/* Anel base (fundo discreto) */}
+            <View style={{ position: 'absolute', width: size, height: size, borderRadius: radius, borderWidth: stroke, borderColor: theme.colors.outline, opacity: 0.25 }} />
 
+            {/* Metade direita */}
             <View style={{ position: 'absolute', width: radius, height: size, right: 0, overflow: 'hidden' }}>
                <View style={{ width: size, height: size, borderRadius: radius, borderWidth: stroke, borderTopColor: activeColor, borderRightColor: activeColor, borderBottomColor: 'transparent', borderLeftColor: 'transparent', position: 'absolute', right: 0, transform: [{ rotate: `${-135 + rightRot}deg` }] }} />
             </View>
 
+            {/* Metade esquerda */}
             <View style={{ position: 'absolute', width: radius, height: size, left: 0, overflow: 'hidden' }}>
                <View style={{ width: size, height: size, borderRadius: radius, borderWidth: stroke, borderTopColor: activeColor, borderRightColor: activeColor, borderBottomColor: 'transparent', borderLeftColor: 'transparent', position: 'absolute', left: 0, transform: [{ rotate: `${45 + leftRot}deg` }] }} />
             </View>
          </View>
       );
    };
+
+   // ── MICROCELEBRAÇÃO ────────────────────────────────────────────────────
+   const celebrationScale = useRef(new Animated.Value(1)).current;
+   const celebrationOpacity = useRef(new Animated.Value(0)).current;
+   const celebrationLabels = ['PERFEITO!', 'EXCELENTE!', '100% CORRETO'];
+   const celebrationLabelRef = useRef(0);
+
+   useEffect(() => {
+      if (kinematics.celebrationTrigger) {
+         celebrationLabelRef.current = (celebrationLabelRef.current + 1) % celebrationLabels.length;
+         // Pulso subtil premium: scale 1→1.06→1 em 600ms
+         Animated.sequence([
+            Animated.parallel([
+               Animated.timing(celebrationScale, { toValue: 1.06, duration: 220, useNativeDriver: false }),
+               Animated.timing(celebrationOpacity, { toValue: 1, duration: 180, useNativeDriver: false }),
+            ]),
+            Animated.parallel([
+               Animated.timing(celebrationScale, { toValue: 1.0, duration: 380, useNativeDriver: false }),
+               Animated.timing(celebrationOpacity, { toValue: 0, duration: 900, useNativeDriver: false }),
+            ]),
+         ]).start();
+      }
+   }, [kinematics.celebrationTrigger]);
 
    const currentRep = isRunning ? Math.floor((seconds % 30) / 3) : 0;
    const targetReps = 12;
@@ -306,31 +347,64 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
                            {/* === FIM BANDA SUPERIOR === */}
 
                            {/* === BANDA CENTRAL === */}
-                           {/* 3. CÍRCULO CENTRAL (Conta-Movimento) */}
+                           {/* 3. CÍRCULO CENTRAL (Conta-Movimento — Qualidade de Execução) */}
                            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', width: '100%', marginVertical: isSm ? 16 : isLg ? 32 : 24, minHeight: trainingDialSizeMobile + 20 }}>
-                              <View style={[styles.meterWrapper, { width: trainingDialSizeMobile, height: trainingDialSizeMobile }]}>
+                              <Animated.View style={[styles.meterWrapper, { width: trainingDialSizeMobile, height: trainingDialSizeMobile, transform: [{ scale: celebrationScale }] }]}>
                                  <TouchableOpacity activeOpacity={0.8} onPress={handleClockPress}>
-                                    {renderRing(kinematics.effortValue, trainingDialSizeMobile, 10)}
+                                    {/* Anel controlado por visualGaugeProgress (qualidade técnica) */}
+                                    {renderRing(kinematics.visualGaugeProgress, trainingDialSizeMobile, 10)}
+
                                     <View style={[styles.effortCenterLabel, { width: trainingDialSizeMobile, height: trainingDialSizeMobile }]}>
-                                       <Text style={[styles.effortValue, { color: theme.colors.primary, fontSize: 62, lineHeight: 68 }]}>{formatTime(seconds)}</Text>
-                                       <Text style={[styles.effortUnit, { color: theme.colors.primary, marginTop: 4, fontSize: 13 }]}>
-                                          {isRunning ? 'EM CURSO' : 'TOCAR/INICIAR'}
+                                       {/* Relógio principal */}
+                                       <Text style={[styles.effortValue, { color: getEffortColor(), fontSize: 62, lineHeight: 68 }]}>
+                                          {formatTime(seconds)}
                                        </Text>
+
+                                       {/* Label de fase (substitui 'EM CURSO' genérico) */}
+                                       <Text style={[styles.effortUnit, { color: getEffortColor(), marginTop: 4, fontSize: 12, letterSpacing: 1.5 }]}>
+                                          {getPhaseLabel()}
+                                       </Text>
+
+                                       {/* Instrução pré-arranque */}
                                        {!isRunning && (
                                           <Animated.Text style={{ opacity: pulseAnim, color: theme.colors.textSecondary, fontSize: 12, marginTop: 8, letterSpacing: 1, position: 'absolute', bottom: 40 }}>
                                              mova {getTargetLimb()}
                                           </Animated.Text>
                                        )}
+
+                                       {/* Microcelebração premium */}
+                                       <Animated.Text
+                                          style={{
+                                             opacity: celebrationOpacity,
+                                             position: 'absolute',
+                                             top: trainingDialSizeMobile * 0.16,
+                                             fontSize: 13,
+                                             fontWeight: '900',
+                                             letterSpacing: 2,
+                                             color: '#ff4757',
+                                             textTransform: 'uppercase',
+                                          }}
+                                       >
+                                          {celebrationLabels[celebrationLabelRef.current]}
+                                       </Animated.Text>
                                     </View>
                                  </TouchableOpacity>
 
+                                 {/* Badge de debug/simulação */}
                                  {kinematics.isSimulated && isRunning && (
-                                    <Text style={{ fontSize: 12, color: theme.colors.warning, position: 'absolute', bottom: -20, fontFamily: 'monospace', fontWeight: 'bold' }}>MOCK SENSOR</Text>
+                                    <Text style={{ fontSize: 11, color: theme.colors.warning, position: 'absolute', bottom: -20, fontFamily: 'monospace', fontWeight: 'bold' }}>MOCK SENSOR</Text>
                                  )}
                                  {kinematics.source === 'unsupported' && isRunning && (
-                                    <Text style={{ fontSize: 12, color: theme.colors.textSecondary, position: 'absolute', bottom: -20, fontFamily: 'monospace', fontWeight: 'bold' }}>S/ SENSOR</Text>
+                                    <Text style={{ fontSize: 11, color: theme.colors.textSecondary, position: 'absolute', bottom: -20, fontFamily: 'monospace', fontWeight: 'bold' }}>S/ SENSOR</Text>
                                  )}
-                              </View>
+
+                                 {/* Rep counter discreto */}
+                                 {isRunning && kinematics.repCount > 0 && (
+                                    <View style={{ position: 'absolute', top: -8, right: -8, backgroundColor: getEffortColor(), borderRadius: 12, paddingHorizontal: 7, paddingVertical: 2 }}>
+                                       <Text style={{ color: '#fff', fontSize: 11, fontWeight: '900' }}>{kinematics.repCount} rep</Text>
+                                    </View>
+                                 )}
+                              </Animated.View>
                            </View>
 
                            {/* === BANDA INFERIOR === */}
