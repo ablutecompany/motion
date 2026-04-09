@@ -46,7 +46,35 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
    const weightRef = useRef(weightRecommended);
    const [dialRotation, setDialRotation] = useState(0);
 
+   // ── METAS EDITÁVEIS + MEMORIZADAS (por exercício) ─────────────────────
+   const [targetRepsPerSet, setTargetRepsPerSet] = useState(10);
+   const [targetSets, setTargetSets] = useState(4);
+   const [editingField, setEditingField] = useState<'reps' | 'sets' | null>(null);
+   const [setCompleteLabel, setSetCompleteLabel] = useState<string | null>(null);
+   const editingTimerRef = useRef<any>(null);
+   const prevCompletedSetsRef = useRef(0);
+
    useEffect(() => { weightRef.current = weightRecommended; }, [weightRecommended]);
+
+   // ── PERSISTÊNCIA LOCAL DAS METAS ──────────────────────────────────────
+   // Chave neutra — no futuro pode ser dinâmica por exercício
+   const PREFS_KEY = 'motion_prefs_v1';
+   useEffect(() => {
+      try {
+         const saved = localStorage.getItem(PREFS_KEY);
+         if (saved) {
+            const p = JSON.parse(saved);
+            if (p.targetRepsPerSet && p.targetRepsPerSet >= 1) setTargetRepsPerSet(p.targetRepsPerSet);
+            if (p.targetSets && p.targetSets >= 1) setTargetSets(p.targetSets);
+         }
+      } catch (_) {}
+   }, []);
+
+   useEffect(() => {
+      try {
+         localStorage.setItem(PREFS_KEY, JSON.stringify({ targetRepsPerSet, targetSets }));
+      } catch (_) {}
+   }, [targetRepsPerSet, targetSets]);
 
    const pulseAnim = useRef(new Animated.Value(0.2)).current;
    useEffect(() => {
@@ -222,10 +250,25 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
       }
    }, [kinematics.celebrationTrigger]);
 
-   const currentRep = isRunning ? Math.floor((seconds % 30) / 3) : 0;
-   const targetReps = 12;
-   const currentSet = activeBlockIndex > -1 ? activeBlockIndex + 1 : 1;
-   const targetSets = totalBlocks > 0 ? totalBlocks : 4;
+   // ── REPS: ligadas ao RepQualityEngine via kinematics.repCount ──────────
+   // repCount = total acumulado de reps detetadas pelo sensor nesta sessão
+   const totalRepsDetected = isRunning ? kinematics.repCount : 0;
+   const completedSets    = Math.floor(totalRepsDetected / targetRepsPerSet);
+   const currentRep       = totalRepsDetected % targetRepsPerSet; // reps dentro da série ativa
+   const currentSet       = Math.min(completedSets + 1, targetSets);
+   const isTrainingDone   = completedSets >= targetSets;
+
+   // Deteção de série completa → feedback no anel
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+   useEffect(() => {
+      if (!isRunning) return;
+      if (completedSets > prevCompletedSetsRef.current && completedSets <= targetSets) {
+         prevCompletedSetsRef.current = completedSets;
+         const label = completedSets >= targetSets ? 'TREINO OK!' : `SÉRIE ${completedSets} OK`;
+         setSetCompleteLabel(label);
+         setTimeout(() => setSetCompleteLabel(null), 2200);
+      }
+   }, [completedSets, isRunning, targetSets]);
 
    // Integração do Motor Dedutivo de Plano de Treino
    const trainingEngine = useMotionTrainingFacade();
@@ -360,9 +403,9 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
                                           {formatTime(seconds)}
                                        </Text>
 
-                                       {/* Label de fase (substitui 'EM CURSO' genérico) */}
-                                       <Text style={[styles.effortUnit, { color: getEffortColor(), marginTop: 4, fontSize: 12, letterSpacing: 1.5 }]}>
-                                          {getPhaseLabel()}
+                                       {/* Label de fase — ou feedback de série completa */}
+                                       <Text style={[styles.effortUnit, { color: setCompleteLabel ? '#ff4757' : getEffortColor(), marginTop: 4, fontSize: 12, letterSpacing: 1.5, fontWeight: setCompleteLabel ? '900' : '700' }]}>
+                                          {setCompleteLabel ?? getPhaseLabel()}
                                        </Text>
 
                                        {/* Instrução pré-arranque */}
