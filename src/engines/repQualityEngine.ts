@@ -66,8 +66,13 @@ const PHASE_CHANGE_THRESHOLD = 1.5;
 const MIN_ACCEPTED_AMPLITUDE = 2.5;
 
 // Score mínimo de qualidade para contabilizar a rep (noise gate).
-// Impede que ruído aleatório passe por "repetição".
-const MIN_QUALITY_FOR_COUNT = 0.15;
+// 0.30 garante que rep precisa de pelo menos 1 característica técnica positiva.
+// Com base 0.50 - fases_incompletas 0.15 = 0.35 → passa (admitido com fases)
+// Com base 0.50 - fases_incompletas 0.15 - cadência_caótica 0.25 = 0.10 → bloqueado
+// Sem 0.30: fases incompletas ISOLADAS passavam com 0.35; com 0.30 continuam a passar MAS
+// cadência má reduz para 0.25 → bloqueado ✓
+// Elevado de 0.15 → 0.30 após validação funcional (2026-04-10)
+const MIN_QUALITY_FOR_COUNT = 0.30;
 
 // Duração mínima de uma fase para ser válida (ms)
 const MIN_PHASE_DURATION_MS = 350;

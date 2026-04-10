@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Platform, PanResponder, useWindowDimensions, Animated, Dimensions } from 'react-native';
 import { ClipboardList, Smartphone, MapPin } from 'lucide-react';
 import { useMotionTheme } from '../../../theme/useMotionTheme';
@@ -266,9 +266,11 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
    // Séries concluídas: cap no targetSets (não ultrapassa)
    const completedSets       = Math.min(Math.floor(totalAcceptedReps / targetRepsPerSet), targetSets);
    // Reps dentro da série atual: se plano concluído, mostra o máximo
-   const currentRepsInSet    = completedSets >= targetSets
+   // Fix: quando repsNoSet === 0 E já há séries completas, é porque fechou a série — mostrar targetRepsPerSet
+   const repsNoSet = totalAcceptedReps % targetRepsPerSet;
+   const currentRepsInSet = completedSets >= targetSets
       ? targetRepsPerSet
-      : totalAcceptedReps % targetRepsPerSet;
+      : (repsNoSet === 0 && completedSets > 0 ? targetRepsPerSet : repsNoSet);
    const currentSet          = Math.min(completedSets + 1, targetSets);
    const exercisePlanCompleted = completedSets >= targetSets && totalAcceptedReps >= maxPlanReps;
    // Reps extra após o plano (separado do display planeado)
