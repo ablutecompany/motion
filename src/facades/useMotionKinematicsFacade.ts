@@ -1,99 +1,115 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Platform } from 'react-native';
 import { RepQualityEngine, RepPhase, QualityEngineState } from '../engines/repQualityEngine';
 
 export type KinematicsSource = 'real_sensor' | 'simulated_dev' | 'unsupported' | 'permission_denied' | 'inactive';
 
-export interface KinematicState {
-  // Gauge visual (0..100) — baseado em qualidade de execução, não velocidade bruta
-  visualGaugeProgress: number;
-  // Para compatibilidade retroativa chamado effortValue — alias de visualGaugeProgress
-  effortValue: number;
-  // Classificação da qualidade (substitui effortState baseado em rawMotion)
-  qualityTier: 'idle' | 'partial' | 'good' | 'excellent';
-  // Para compatibilidade retroativa
-  effortState: 'low' | 'medium' | 'high' | 'redline';
-  // Fase atual da repetição
+export type PermissionState = 'unknown' | 'granted' | 'denied' | 'not_required' | 'error';
+
+export type SensorStatus = 'NO_EVENTS' | 'EVENTS_OK' | 'PARTIAL_DATA';
+
+// Debug snapshot — tudo o que o painel de diagnóstico precisa
+export interface SensorDebugSnapshot {
+  sensorStatus: SensorStatus;
+  lastMotionEventAgeMs: number;
+  motionEventCount: number;
+  orientationEventCount: number;
+  motionIntervalMs: number;          // intervalo médio entre eventos motion
+  // Raw de accelerationIncludingGravity
+  aigX: number | null;
+  aigY: number | null;
+  aigZ: number | null;
+  // Raw de acceleration (sem gravidade)
+  accX: number | null;
+  accY: number | null;
+  accZ: number | null;
+  // RotationRate
+  rrAlpha: number | null;
+  rrBeta: number | null;
+  rrGamma: number | null;
+  // Orientation
+  oriAlpha: number | null;
+  oriBeta: number | null;
+  oriGamma: number | null;
+  // Flags de presença
+  hasAcceleration: boolean;
+  hasAccelerationIncludingGravity: boolean;
+  hasRotationRate: boolean;
+  hasOrientation: boolean;
+  // Pipeline
   currentPhase: RepPhase;
-  // Progresso dentro da repetição (0..1)
-  repProgress: number;
-  // Score de qualidade técnica (0..1)
-  executionQualityScore: number;
-  // Trigger de microcelebração (execução excelente)
-  celebrationTrigger: boolean;
-  // Número de repetições detetadas
+  currentAmplitude: number;
+  currentScore: number;
+  idleState: boolean;
   repCount: number;
-  // Referência de amplitude calibrada na 1ª rep
+  rejectionReason: string;
+  // Permissões
+  motionPermission: PermissionState;
+  orientationPermission: PermissionState;
+}
+
+export interface KinematicState {
+  visualGaugeProgress: number;
+  effortValue: number;
+  qualityTier: 'idle' | 'partial' | 'good' | 'excellent';
+  effortState: 'low' | 'medium' | 'high' | 'redline';
+  currentPhase: RepPhase;
+  repProgress: number;
+  executionQualityScore: number;
+  celebrationTrigger: boolean;
+  repCount: number;
   referenceROM: number | null;
-  // Metadados de fonte
   isSimulated: boolean;
   isAvailable: boolean;
   source: KinematicsSource;
+  // Debug
+  debug: SensorDebugSnapshot;
+  // Ação de permissão — deve ser chamada de um gesto do utilizador
+  requestSensorPermission: () => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
-// GERADOR DE SIMULAÇÃO REALISTA DE SUPINO (dev / localhost)
-// ---------------------------------------------------------------------------
-// Simula ciclos plausíveis de supino com variação de qualidade:
-// bom → mau → bom → bom → caótico → bom
+// SIMULAÇÃO (dev/localhost)
 // ---------------------------------------------------------------------------
 function createSimulatedSupinoCycle(): (t: number) => { x: number; y: number; z: number } {
-  const CYCLE_DURATION = 6.0; // segundos por rep
-  const cycleQuality = [1.0, 0.4, 0.9, 0.85, 0.2, 0.95]; // qualidades alternadas
+  const CYCLE_DURATION = 6.0;
+  const cycleQuality = [1.0, 0.4, 0.9, 0.85, 0.2, 0.95];
   let cycleIndex = 0;
   let lastCycleT = 0;
 
   return (t: number) => {
-    // Detectar novo ciclo
     if (t - lastCycleT >= CYCLE_DURATION) {
       cycleIndex = (cycleIndex + 1) % cycleQuality.length;
       lastCycleT = t;
     }
+    const q = cycleQuality[cycleIndex];
+    const tInCycle = (t - lastCycleT) / CYCLE_DURATION;
+    const noise = (Math.random() - 0.5) * (1 - q) * 4;
 
-    const q = cycleQuality[cycleIndex]; // 0=mau, 1=perfeito
-    const tInCycle = (t - lastCycleT) / CYCLE_DURATION; // 0..1
-    const noise = (Math.random() - 0.5) * (1 - q) * 4; // mais ruído se má qualidade
-
-    // ---------- FASE: REPOUSO (0..10%) ----------
-    if (tInCycle < 0.10) {
-      return { x: noise * 0.3, y: -9.81 + noise * 0.2, z: noise * 0.3 };
-    }
-
-    // ---------- FASE: DESCIDA EXCÊNTRICA (10%..40%) ----------
+    if (tInCycle < 0.10) return { x: noise * 0.3, y: -9.81 + noise * 0.2, z: noise * 0.3 };
     if (tInCycle < 0.40) {
       const phaseT = (tInCycle - 0.10) / 0.30;
       if (q < 0.5) {
-        // Descida caótica: rápida e com saltos
         const chaos = Math.sin(phaseT * Math.PI * 8) * 4;
         return { x: noise + chaos * 0.5, y: -9.81 - (phaseT * 8) + noise, z: noise + chaos * 0.3 };
       }
-      // Descida controlada: aceleração suave em Y
       const descent = Math.sin(phaseT * Math.PI * 0.5) * 5 * q;
       return { x: noise * 0.15, y: -9.81 - descent + noise * 0.3, z: noise * 0.15 };
     }
-
-    // ---------- FASE: FUNDO / PAUSA (40%..52%) ----------
     if (tInCycle < 0.52) {
       const phaseT = (tInCycle - 0.40) / 0.12;
-      // Ligeira inversão de Y no fundo
       const bottomBounce = Math.sin(phaseT * Math.PI) * 2 * q;
       return { x: noise * 0.2, y: -9.81 + bottomBounce + noise * 0.3, z: noise * 0.2 };
     }
-
-    // ---------- FASE: SUBIDA CONCÊNTRICA (52%..82%) ----------
     if (tInCycle < 0.82) {
       const phaseT = (tInCycle - 0.52) / 0.30;
       if (q < 0.5) {
-        // Subida explosiva/caótica
         const chaos = Math.sin(phaseT * Math.PI * 6) * 5;
         return { x: noise + chaos * 0.4, y: -9.81 + (phaseT * 12) + noise, z: noise + chaos * 0.3 };
       }
-      // Subida controlada: desaceleração em Y
       const ascent = Math.sin(phaseT * Math.PI * 0.5) * 6 * q;
       return { x: noise * 0.15, y: -9.81 + ascent + noise * 0.3, z: noise * 0.15 };
     }
-
-    // ---------- FASE: TOPO / LOCKOUT (82%..100%) ----------
     const lockoutJitter = q < 0.5 ? noise * 2 : noise * 0.15;
     return { x: lockoutJitter, y: -9.81 + 1.5 * q + lockoutJitter * 0.5, z: lockoutJitter };
   };
@@ -103,10 +119,34 @@ function createSimulatedSupinoCycle(): (t: number) => { x: number; y: number; z:
 // HOOK PRINCIPAL
 // ---------------------------------------------------------------------------
 
+const DEFAULT_DEBUG: SensorDebugSnapshot = {
+  sensorStatus: 'NO_EVENTS',
+  lastMotionEventAgeMs: -1,
+  motionEventCount: 0,
+  orientationEventCount: 0,
+  motionIntervalMs: 0,
+  aigX: null, aigY: null, aigZ: null,
+  accX: null, accY: null, accZ: null,
+  rrAlpha: null, rrBeta: null, rrGamma: null,
+  oriAlpha: null, oriBeta: null, oriGamma: null,
+  hasAcceleration: false,
+  hasAccelerationIncludingGravity: false,
+  hasRotationRate: false,
+  hasOrientation: false,
+  currentPhase: 'idle',
+  currentAmplitude: 0,
+  currentScore: 0,
+  idleState: true,
+  repCount: 0,
+  rejectionReason: '—',
+  motionPermission: 'unknown',
+  orientationPermission: 'unknown',
+};
+
 export const useMotionKinematicsFacade = (active: boolean = true): KinematicState => {
-  const engineRef = useRef<RepQualityEngine>(new RepQualityEngine());
+  const engineRef    = useRef<RepQualityEngine>(new RepQualityEngine());
   const simulatorRef = useRef(createSimulatedSupinoCycle());
-  const sourceRef = useRef<KinematicsSource>('inactive');
+  const sourceRef    = useRef<KinematicsSource>('inactive');
 
   const [engineState, setEngineState] = useState<QualityEngineState>({
     currentPhase: 'idle',
@@ -118,102 +158,303 @@ export const useMotionKinematicsFacade = (active: boolean = true): KinematicStat
     referenceROM: null,
     lastRepResult: null,
   });
-  const [source, setSource] = useState<KinematicsSource>('inactive');
+  const [source, setSource]   = useState<KinematicsSource>('inactive');
+  const [debug, setDebug]     = useState<SensorDebugSnapshot>(DEFAULT_DEBUG);
+  const debugRef              = useRef<SensorDebugSnapshot>({ ...DEFAULT_DEBUG });
 
-  const receivedRealDataRef = useRef(false);
+  const receivedRealDataRef   = useRef(false);
+  const listenersAttachedRef  = useRef(false);
 
-  useEffect(() => {
-    if (!active) {
-      setSource('inactive');
-      engineRef.current.reset();
-      return;
+  // Timestamps para calcular intervalo de eventos
+  const lastMotionTsRef       = useRef<number>(0);
+  const motionIntervalSumRef  = useRef<number>(0);
+  const motionIntervalCountRef = useRef<number>(0);
+
+  // Última razão de rejeição (pipeline)
+  const lastRejectionRef = useRef<string>('—');
+  const lastAmplitudeRef = useRef<number>(0);
+
+  // ── Flush do debug para o estado React (throttled a 4 Hz) ────────────────
+  const debugFlushRef = useRef<number>(0);
+  const flushDebug = () => {
+    const now = Date.now();
+    if (now - debugFlushRef.current > 250) {
+      debugFlushRef.current = now;
+      setDebug({ ...debugRef.current });
     }
+  };
 
-    const isWeb = Platform.OS === 'web';
-    const isLocalhost =
-      isWeb &&
-      typeof window !== 'undefined' &&
-      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  // ── Handler de motion ────────────────────────────────────────────────────
+  const handleMotionRef = useRef<((e: any) => void) | null>(null);
+  const handleOrientationRef = useRef<((e: any) => void) | null>(null);
 
-    let localSource: KinematicsSource = 'unsupported';
-    let animFrame: number;
-    let startTime = Date.now();
+  // ── Inicialização de listeners (reusável após permissão) ─────────────────
+  const attachListeners = useCallback(() => {
+    if (listenersAttachedRef.current) return;
+    listenersAttachedRef.current = true;
+
     const engine = engineRef.current;
-    engine.reset();
 
-    // ── Handler de sensor real ─────────────────────────────────────────────
-    const handleMotion = (event: any) => {
-      const acc = event.accelerationIncludingGravity || event.acceleration;
-      if (acc && acc.x !== null && acc.y !== null) {
+    handleMotionRef.current = (event: any) => {
+      const now = Date.now();
+      const aig = event.accelerationIncludingGravity;
+      const acc = event.acceleration;
+      const rr  = event.rotationRate;
+
+      // ── Atualizar debug raw ──────────────────────────────────────────────
+      const prevCount = debugRef.current.motionEventCount;
+      const interval = prevCount > 0 && lastMotionTsRef.current > 0
+        ? now - lastMotionTsRef.current : 0;
+      if (interval > 0) {
+        motionIntervalSumRef.current += interval;
+        motionIntervalCountRef.current += 1;
+      }
+      lastMotionTsRef.current = now;
+
+      const hasAIG = !!(aig && aig.x !== null && aig.y !== null);
+      const hasAcc = !!(acc && acc.x !== null && acc.y !== null);
+      const hasRR  = !!(rr && rr.alpha !== null);
+
+      // Determinar status
+      let status: SensorStatus = 'NO_EVENTS';
+      if (hasAIG || hasAcc) {
+        status = (hasAIG && hasAcc) ? 'EVENTS_OK' : 'PARTIAL_DATA';
+      }
+      if (!hasAIG && !hasAcc) {
+        status = 'PARTIAL_DATA'; // evento chegou mas sem aceleração utilizável
+      }
+      if (prevCount === 0 && !hasAIG && !hasAcc) {
+        lastRejectionRef.current = 'acc null — sem dados de aceleração';
+      }
+
+      debugRef.current = {
+        ...debugRef.current,
+        sensorStatus: status,
+        lastMotionEventAgeMs: 0,
+        motionEventCount: prevCount + 1,
+        motionIntervalMs: motionIntervalCountRef.current > 0
+          ? Math.round(motionIntervalSumRef.current / motionIntervalCountRef.current) : 0,
+        aigX: aig?.x ?? null, aigY: aig?.y ?? null, aigZ: aig?.z ?? null,
+        accX: acc?.x ?? null, accY: acc?.y ?? null, accZ: acc?.z ?? null,
+        rrAlpha: rr?.alpha ?? null, rrBeta: rr?.beta ?? null, rrGamma: rr?.gamma ?? null,
+        hasAcceleration: hasAcc,
+        hasAccelerationIncludingGravity: hasAIG,
+        hasRotationRate: hasRR,
+        currentPhase: engineRef.current ? 'idle' : 'idle',
+        repCount: engineState.repCount,
+        rejectionReason: lastRejectionRef.current,
+      };
+      flushDebug();
+
+      // ── Pipeline: escolher fonte de dados ────────────────────────────────
+      // Prioridade: acceleration > accelerationIncludingGravity (fallback)
+      let useX: number | null = null;
+      let useY: number | null = null;
+      let useZ: number | null = null;
+
+      if (hasAcc) {
+        useX = acc!.x; useY = acc!.y; useZ = acc!.z;
+      } else if (hasAIG) {
+        // Fallback: accelerationIncludingGravity (inclui gravidade ~9.81 no eixo)
+        // O engine já subtrai a gravidade via magnitude vs GRAVITY
+        useX = aig!.x; useY = aig!.y; useZ = aig!.z;
+      }
+
+      if (useX !== null && useY !== null) {
         receivedRealDataRef.current = true;
 
-        if (localSource !== 'real_sensor') {
-          localSource = 'real_sensor';
+        if (sourceRef.current !== 'real_sensor') {
           sourceRef.current = 'real_sensor';
           setSource('real_sensor');
         }
 
         const newState = engine.processSample({
-          x: acc.x ?? 0,
-          y: acc.y ?? 0,
-          z: acc.z ?? 0,
-          timestamp: Date.now(),
+          x: useX,
+          y: useY,
+          z: useZ ?? 0,
+          timestamp: now,
         });
 
+        // Actualizar amplitude e fase no debug
+        debugRef.current.currentPhase = newState.currentPhase;
+        debugRef.current.currentScore = newState.executionQualityScore;
+        debugRef.current.idleState    = newState.currentPhase === 'idle';
+        debugRef.current.repCount     = newState.repCount;
+
         setEngineState({ ...newState });
+      } else {
+        // Evento chegou mas sem dados utilizáveis
+        lastRejectionRef.current = 'acc null/undefined — evento sem dados';
+        debugRef.current.rejectionReason = lastRejectionRef.current;
+        debugRef.current.sensorStatus = 'PARTIAL_DATA';
+        flushDebug();
       }
     };
 
-    // ── Tick (simulação + UI flush) ────────────────────────────────────────
+    handleOrientationRef.current = (event: any) => {
+      const prevCount = debugRef.current.orientationEventCount;
+      debugRef.current = {
+        ...debugRef.current,
+        orientationEventCount: prevCount + 1,
+        oriAlpha: event.alpha ?? null,
+        oriBeta:  event.beta  ?? null,
+        oriGamma: event.gamma ?? null,
+        hasOrientation: event.alpha !== null,
+      };
+      flushDebug();
+    };
+
+    window.addEventListener('devicemotion',      handleMotionRef.current,      true);
+    window.addEventListener('deviceorientation', handleOrientationRef.current!, true);
+  }, []);
+
+  // ── Pedir permissão (deve ser chamado de um gesto, ex: botão) ────────────
+  const requestSensorPermission = useCallback(async () => {
+    const isWeb = Platform.OS === 'web' && typeof window !== 'undefined';
+    if (!isWeb) return;
+
+    let motionPerm: PermissionState  = 'not_required';
+    let orientPerm: PermissionState  = 'not_required';
+
+    // iOS 13+ requer requestPermission()
+    const dme = (window as any).DeviceMotionEvent;
+    const doe = (window as any).DeviceOrientationEvent;
+
+    if (dme && typeof dme.requestPermission === 'function') {
+      try {
+        const result = await dme.requestPermission();
+        motionPerm = result === 'granted' ? 'granted' : 'denied';
+      } catch {
+        motionPerm = 'error';
+      }
+    } else if ('DeviceMotionEvent' in window) {
+      motionPerm = 'not_required'; // Android / desktop — não exige permissão explícita
+    } else {
+      motionPerm = 'denied'; // browser sem suporte
+    }
+
+    if (doe && typeof doe.requestPermission === 'function') {
+      try {
+        const result = await doe.requestPermission();
+        orientPerm = result === 'granted' ? 'granted' : 'denied';
+      } catch {
+        orientPerm = 'error';
+      }
+    } else if ('DeviceOrientationEvent' in window) {
+      orientPerm = 'not_required';
+    } else {
+      orientPerm = 'denied';
+    }
+
+    debugRef.current = {
+      ...debugRef.current,
+      motionPermission: motionPerm,
+      orientationPermission: orientPerm,
+    };
+    setDebug({ ...debugRef.current });
+
+    // Se permissão concedida, ligar listeners agora
+    if (motionPerm === 'granted' || motionPerm === 'not_required') {
+      attachListeners();
+    }
+  }, [attachListeners]);
+
+  // ── Effect principal ─────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!active) {
+      setSource('inactive');
+      engineRef.current.reset();
+      listenersAttachedRef.current = false;
+      return;
+    }
+
+    const isWeb       = Platform.OS === 'web';
+    const isLocalhost = isWeb && typeof window !== 'undefined' &&
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+    let animFrame: number;
+    let startTime  = Date.now();
+    const engine   = engineRef.current;
+    engine.reset();
+    receivedRealDataRef.current = false;
+    listenersAttachedRef.current = false;
+
+    // ── Tick ──────────────────────────────────────────────────────────────
     let lastPublish = 0;
     const tick = () => {
       const now = Date.now();
-      const t = (now - startTime) / 1000;
+      const t   = (now - startTime) / 1000;
 
-      if (localSource === 'simulated_dev') {
+      // Actualizar idade do último evento
+      if (debugRef.current.lastMotionEventAgeMs >= 0 && lastMotionTsRef.current > 0) {
+        debugRef.current.lastMotionEventAgeMs = now - lastMotionTsRef.current;
+        if (now - debugFlushRef.current > 250) {
+          setDebug({ ...debugRef.current });
+          debugFlushRef.current = now;
+        }
+      }
+
+      if (sourceRef.current === 'simulated_dev') {
         const sim = simulatorRef.current(t);
         const newState = engine.processSample({ ...sim, timestamp: now });
-
         if (now - lastPublish > 33) {
           lastPublish = now;
           setEngineState({ ...newState });
         }
-      } else if (localSource === 'real_sensor') {
-        // O estado é atualizado pelo handleMotion — só garantimos o frame
-        if (now - lastPublish > 33) {
-          lastPublish = now;
-        }
       }
-      // unsupported: gauge fica em 0 (já está no estado inicial)
 
       animFrame = requestAnimationFrame(tick);
     };
 
-    // ── Inicialização de fonte ─────────────────────────────────────────────
+    // ── Inicialização ─────────────────────────────────────────────────────
     if (isWeb && typeof window !== 'undefined' && 'DeviceMotionEvent' in window) {
-      localSource = 'real_sensor';
-      sourceRef.current = 'real_sensor';
-      window.addEventListener('devicemotion', handleMotion);
-      setSource('real_sensor');
+      const dme = (window as any).DeviceMotionEvent;
+      const needsPermission = typeof dme?.requestPermission === 'function';
 
-      // Fallback: sem dados reais em 2s → simular ou marcar unsupported
-      setTimeout(() => {
-        if (!receivedRealDataRef.current) {
-          if (isLocalhost) {
-            localSource = 'simulated_dev';
-            sourceRef.current = 'simulated_dev';
-            startTime = Date.now(); // re-calibrar tempo do simulador
-            setSource('simulated_dev');
-          } else {
-            localSource = 'unsupported';
-            sourceRef.current = 'unsupported';
-            setSource('unsupported');
+      if (needsPermission) {
+        // iOS: NÃO ligar listeners automaticamente — aguardar botão "Ativar sensores"
+        sourceRef.current = 'unsupported';
+        setSource('unsupported');
+        debugRef.current = {
+          ...debugRef.current,
+          motionPermission: 'unknown',
+          sensorStatus: 'NO_EVENTS',
+          rejectionReason: 'iOS: toque em "Ativar sensores" para pedir permissão',
+        };
+        setDebug({ ...debugRef.current });
+      } else {
+        // Android / desktop: ligar directamente
+        attachListeners();
+        sourceRef.current = 'real_sensor';
+        setSource('real_sensor');
+        debugRef.current = {
+          ...debugRef.current,
+          motionPermission: 'not_required',
+          orientationPermission: 'not_required',
+        };
+
+        // Fallback: sem dados em 2.5s → simulado (localhost) ou unsupported
+        setTimeout(() => {
+          if (!receivedRealDataRef.current) {
+            if (isLocalhost) {
+              sourceRef.current = 'simulated_dev';
+              startTime = Date.now();
+              setSource('simulated_dev');
+            } else {
+              sourceRef.current = 'unsupported';
+              setSource('unsupported');
+              debugRef.current = {
+                ...debugRef.current,
+                sensorStatus: 'NO_EVENTS',
+                rejectionReason: 'Sem eventos DeviceMotion após 2.5s',
+              };
+              setDebug({ ...debugRef.current });
+            }
           }
-        }
-      }, 2000);
+        }, 2500);
+      }
     } else {
       if (isLocalhost) {
-        localSource = 'simulated_dev';
         sourceRef.current = 'simulated_dev';
         setSource('simulated_dev');
       } else {
@@ -224,14 +465,18 @@ export const useMotionKinematicsFacade = (active: boolean = true): KinematicStat
     tick();
 
     return () => {
-      if (isWeb && typeof window !== 'undefined') {
-        window.removeEventListener('devicemotion', handleMotion);
+      if (typeof window !== 'undefined') {
+        if (handleMotionRef.current)
+          window.removeEventListener('devicemotion', handleMotionRef.current, true);
+        if (handleOrientationRef.current)
+          window.removeEventListener('deviceorientation', handleOrientationRef.current!, true);
       }
       cancelAnimationFrame(animFrame);
+      listenersAttachedRef.current = false;
     };
-  }, [active]);
+  }, [active, attachListeners]);
 
-  // ── Derivar tier de qualidade ──────────────────────────────────────────
+  // ── Derivar tier de qualidade ────────────────────────────────────────────
   const q = engineState.executionQualityScore;
   const qualityTier: KinematicState['qualityTier'] =
     q >= 0.88 ? 'excellent' :
@@ -239,27 +484,25 @@ export const useMotionKinematicsFacade = (active: boolean = true): KinematicStat
     q >= 0.25 ? 'partial' :
     'idle';
 
-  // Compatibilidade: effortState mapeado a partir de qualityTier
   const effortStateMap: Record<KinematicState['qualityTier'], KinematicState['effortState']> = {
-    excellent: 'redline',
-    good:      'high',
-    partial:   'medium',
-    idle:      'low',
+    excellent: 'redline', good: 'high', partial: 'medium', idle: 'low',
   };
 
   return {
     visualGaugeProgress: engineState.visualGaugeProgress,
-    effortValue: engineState.visualGaugeProgress, // alias retroativo
+    effortValue:         engineState.visualGaugeProgress,
     qualityTier,
-    effortState: effortStateMap[qualityTier],
-    currentPhase: engineState.currentPhase,
-    repProgress: engineState.repProgress,
+    effortState:         effortStateMap[qualityTier],
+    currentPhase:        engineState.currentPhase,
+    repProgress:         engineState.repProgress,
     executionQualityScore: engineState.executionQualityScore,
-    celebrationTrigger: engineState.celebrationTrigger,
-    repCount: engineState.repCount,
-    referenceROM: engineState.referenceROM,
-    isSimulated: source === 'simulated_dev',
-    isAvailable: source === 'real_sensor' || source === 'simulated_dev',
+    celebrationTrigger:  engineState.celebrationTrigger,
+    repCount:            engineState.repCount,
+    referenceROM:        engineState.referenceROM,
+    isSimulated:         source === 'simulated_dev',
+    isAvailable:         source === 'real_sensor' || source === 'simulated_dev',
     source,
+    debug,
+    requestSensorPermission,
   };
 };

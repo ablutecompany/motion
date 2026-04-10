@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Platform, PanResponder, useWindowDimensions, Animated, Dimensions } from 'react-native';
 import { ClipboardList, Smartphone, MapPin } from 'lucide-react';
 import { useMotionTheme } from '../../../theme/useMotionTheme';
@@ -426,16 +426,27 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
 
                            {/* 2. TOP STATS (Sensor, Séries, Reps) - Relativo e Alinhado */}
                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 8 }}>
-                              {/* Sensor */}
-                              <View style={{ flex: 1 }}>
-                                 <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 10, letterSpacing: 1, marginBottom: 4 }]}>SENSOR</Text>
-                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                    <Smartphone size={14} color={theme.colors.textSecondary} />
-                                    <Text style={{ color: theme.colors.primary, fontSize: 12, fontWeight: '800' }}>
-                                       <Text style={{ color: theme.colors.textSecondary, fontWeight: '500' }}>Tlm no</Text> braço
-                                    </Text>
-                                 </View>
-                              </View>
+                               {/* Sensor + Botao Ativacao */}
+                               <View style={{ flex: 1 }}>
+                                  <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 10, letterSpacing: 1, marginBottom: 4 }]}>SENSOR</Text>
+                                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                        <Smartphone size={14} color={kinematics.debug.sensorStatus === "EVENTS_OK" ? theme.colors.primary : kinematics.debug.sensorStatus === "PARTIAL_DATA" ? "#ffd700" : theme.colors.textSecondary} />
+                                        <Text style={{ color: kinematics.debug.sensorStatus === "EVENTS_OK" ? theme.colors.primary : kinematics.debug.sensorStatus === "PARTIAL_DATA" ? "#ffd700" : theme.colors.textSecondary, fontSize: 11, fontWeight: "800" }}>
+                                           {kinematics.debug.sensorStatus === "EVENTS_OK" ? "Sensores ativos" : kinematics.debug.sensorStatus === "PARTIAL_DATA" ? "Sensores parciais" : kinematics.debug.motionPermission === "denied" ? "Permissao recusada" : kinematics.debug.motionPermission === "unknown" ? "Sem dados" : "S/ sensor"}
+                                        </Text>
+                                     </View>
+                                     {/* Botao Ativar Sensores — iOS exige gesto de utilizador */}
+                                     {(kinematics.debug.motionPermission === "unknown" || kinematics.debug.sensorStatus === "NO_EVENTS") && (
+                                        <TouchableOpacity
+                                           onPress={kinematics.requestSensorPermission}
+                                           style={{ backgroundColor: theme.colors.primary + "22", borderWidth: 1, borderColor: theme.colors.primary, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 3 }}
+                                        >
+                                           <Text style={{ color: theme.colors.primary, fontSize: 10, fontWeight: "900", letterSpacing: 1 }}>ATIVAR SENSORES</Text>
+                                        </TouchableOpacity>
+                                     )}
+                                  </View>
+                               </View>
 
                               {/* Telemetria de Esforço */}
                               <View style={{ flexDirection: 'row', gap: 16 }}>
@@ -519,6 +530,64 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
                                     </View>
                                  )}
                               </Animated.View>
+
+                            {/* === PAINEL DEBUG DE SENSORES === */}
+                            {isRunning && (
+                               <View style={{ backgroundColor: "#0a0a0a", borderWidth: 1, borderColor: "#1a1a2e", borderRadius: 8, padding: 10, marginTop: 8, marginBottom: 0 }}>
+                                  {/* Linha 1: Status e source */}
+                                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                                     <Text style={{ color: kinematics.debug.sensorStatus === "EVENTS_OK" ? "#4ade80" : kinematics.debug.sensorStatus === "PARTIAL_DATA" ? "#ffd700" : "#ff4757", fontSize: 10, fontWeight: "900", fontFamily: "monospace", letterSpacing: 1 }}>
+                                        {kinematics.debug.sensorStatus}
+                                     </Text>
+                                     <Text style={{ color: "#666", fontSize: 10, fontFamily: "monospace" }}>
+                                        src:{kinematics.source} evt:{kinematics.debug.motionEventCount} int:{kinematics.debug.motionIntervalMs}ms
+                                     </Text>
+                                  </View>
+                                  {/* Linha 2: Permissoes */}
+                                  <View style={{ flexDirection: "row", gap: 12, marginBottom: 6 }}>
+                                     <Text style={{ color: kinematics.debug.motionPermission === "granted" || kinematics.debug.motionPermission === "not_required" ? "#4ade80" : kinematics.debug.motionPermission === "denied" ? "#ff4757" : "#888", fontSize: 9, fontFamily: "monospace" }}>
+                                        motion:{kinematics.debug.motionPermission}
+                                     </Text>
+                                     <Text style={{ color: kinematics.debug.orientationPermission === "granted" || kinematics.debug.orientationPermission === "not_required" ? "#4ade80" : kinematics.debug.orientationPermission === "denied" ? "#ff4757" : "#888", fontSize: 9, fontFamily: "monospace" }}>
+                                        orient:{kinematics.debug.orientationPermission}
+                                     </Text>
+                                  </View>
+                                  {/* Linha 3: Flags de presenca */}
+                                  <View style={{ flexDirection: "row", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                                     {[
+                                        ["AIG", kinematics.debug.hasAccelerationIncludingGravity],
+                                        ["ACC", kinematics.debug.hasAcceleration],
+                                        ["RR",  kinematics.debug.hasRotationRate],
+                                        ["ORI", kinematics.debug.hasOrientation],
+                                     ].map(([label, val]) => (
+                                        <Text key={String(label)} style={{ color: val ? "#4ade80" : "#ff4757", fontSize: 9, fontFamily: "monospace", backgroundColor: "#111", paddingHorizontal: 5, paddingVertical: 1, borderRadius: 3 }}>
+                                           {String(label)}:{val ? "OK" : "NO"}
+                                        </Text>
+                                     ))}
+                                  </View>
+                                  {/* Linha 4: accelerationIncludingGravity */}
+                                  <Text style={{ color: "#888", fontSize: 9, fontFamily: "monospace", marginBottom: 2 }}>
+                                     AIG  x:{kinematics.debug.aigX?.toFixed(2) ?? "null"}  y:{kinematics.debug.aigY?.toFixed(2) ?? "null"}  z:{kinematics.debug.aigZ?.toFixed(2) ?? "null"}
+                                  </Text>
+                                  {/* Linha 5: acceleration */}
+                                  <Text style={{ color: "#888", fontSize: 9, fontFamily: "monospace", marginBottom: 2 }}>
+                                     ACC  x:{kinematics.debug.accX?.toFixed(2) ?? "null"}  y:{kinematics.debug.accY?.toFixed(2) ?? "null"}  z:{kinematics.debug.accZ?.toFixed(2) ?? "null"}
+                                  </Text>
+                                  {/* Linha 6: orientation */}
+                                  <Text style={{ color: "#666", fontSize: 9, fontFamily: "monospace", marginBottom: 6 }}>
+                                     ORI  a:{kinematics.debug.oriAlpha?.toFixed(1) ?? "null"}  b:{kinematics.debug.oriBeta?.toFixed(1) ?? "null"}  g:{kinematics.debug.oriGamma?.toFixed(1) ?? "null"}
+                                  </Text>
+                                  {/* Linha 7: Pipeline */}
+                                  <View style={{ borderTopWidth: 1, borderTopColor: "#1a1a2e", paddingTop: 6 }}>
+                                     <Text style={{ color: "#888", fontSize: 9, fontFamily: "monospace", marginBottom: 2 }}>
+                                        phase:{kinematics.debug.currentPhase}  score:{kinematics.debug.currentScore.toFixed(2)}  reps:{kinematics.debug.repCount}
+                                     </Text>
+                                     <Text style={{ color: kinematics.debug.rejectionReason === "—" ? "#555" : "#ffd700", fontSize: 9, fontFamily: "monospace" }}>
+                                        reject: {kinematics.debug.rejectionReason}
+                                     </Text>
+                                  </View>
+                               </View>
+                            )}
                            </View>
 
                            {/* === BANDA INFERIOR === */}
