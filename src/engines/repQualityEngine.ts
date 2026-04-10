@@ -2,8 +2,9 @@
  * repQualityEngine.ts
  *
  * Motor central de qualidade de execução do conta-movimento.
- * Transforma rawMotion (acelerómetro bruto) em visualGaugeProgress
- * que reflete qualidade técnica da repetição, não velocidade isolada.
+ * Garante que apenas movimento físico real e plausível conta como repetição.
+ *
+ * REGRA CENTRAL: acceptedRep = movimento físico real + amplitude suficiente + qualidade mínima
  *
  * Pipeline:
  *   rawMotion  →  RepPhaseDetector  →  ExecutionQualityScorer  →  VisualGaugeMapper
@@ -38,10 +39,10 @@ export interface RepResult {
 
 export interface QualityEngineState {
   currentPhase: RepPhase;
-  repProgress: number;        // 0..1 — progresso dentro da rep
+  repProgress: number;         // 0..1 — progresso dentro da rep
   visualGaugeProgress: number; // 0..100 — controla anel
   executionQualityScore: number; // 0..1 — score técnico
-  repCount: number;
+  repCount: number;            // APENAS reps com movimento físico real validado
   celebrationTrigger: boolean;
   referenceROM: number | null; // calibrado na 1ª rep válida
   lastRepResult: RepResult | null;
@@ -53,37 +54,46 @@ export interface QualityEngineState {
 
 const GRAVITY = 9.81;
 
-// Limiar mínimo de movimento para sair de idle (m/s² delta acima da gravidade)
-const IDLE_THRESHOLD = 1.2;
+// Limiar mínimo para sair de idle — elevado para evitar ruído de sensor.
+// 2.8 m/s² ≈ 28% de 1G extra: exige movimento intencional, não vibração ou mesa.
+const IDLE_THRESHOLD = 2.8;
 
-// Limiar para detetar fundo/topo (inversão de aceleração vertical)
-const PHASE_CHANGE_THRESHOLD = 0.8;
+// Limiar de mudança de fase — mais exigente.
+const PHASE_CHANGE_THRESHOLD = 1.5;
+
+// Amplitude mínima para que uma rep seja aceite.
+// Menos de 2.5 m/s² de pico = não foi movimento real de exercício.
+const MIN_ACCEPTED_AMPLITUDE = 2.5;
+
+// Score mínimo de qualidade para contabilizar a rep (noise gate).
+// Impede que ruído aleatório passe por "repetição".
+const MIN_QUALITY_FOR_COUNT = 0.15;
 
 // Duração mínima de uma fase para ser válida (ms)
-const MIN_PHASE_DURATION_MS = 250;
+const MIN_PHASE_DURATION_MS = 350;
 
-// Duração máxima de uma fase antes de ser considerada "caótica" (ms)
-const MAX_PHASE_DURATION_MS = 6000;
+// Duração máxima de uma fase — após este tempo, RESET para idle (não avança rep)
+const MAX_PHASE_DURATION_MS = 7000;
 
-// Cadência ótima por fase (ms): entre 800ms e 2500ms
-const CADENCE_MIN_MS = 800;
-const CADENCE_MAX_MS = 2500;
+// Cadência ótima por fase (ms): entre 700ms e 3000ms
+const CADENCE_MIN_MS = 700;
+const CADENCE_MAX_MS = 3000;
 
 // Limiar de ruído lateral (std dev de X/Z normalizado)
 const NOISE_HIGH_THRESHOLD = 0.35;
 const NOISE_MEDIUM_THRESHOLD = 0.15;
 
-// Score mínimo para celebração
+// Score mínimo para microcelebração
 const CELEBRATION_THRESHOLD = 0.88;
 
 // Pesos do VisualGaugeMapper
 const WEIGHT_QUALITY = 0.82;
-const WEIGHT_RAW = 0.18;
+const WEIGHT_RAW     = 0.18;
 
 // Cap visual por condição degradada
-const CAP_CHAOTIC_CADENCE = 0.50;   // cadência demasiado rápida
-const CAP_INSUFFICIENT_AMP = 0.45;  // amplitude insuficiente
-const CAP_INCOMPLETE_PHASES = 0.35; // fases saltadas
+const CAP_CHAOTIC_CADENCE  = 0.50;
+const CAP_INSUFFICIENT_AMP = 0.45;
+const CAP_INCOMPLETE_PHASES = 0.35;
 
 // ---------------------------------------------------------------------------
 // UTILITÁRIOS
@@ -101,7 +111,6 @@ function lateralNoise(samples: RawSample[]): number {
   const meanZ = zVals.reduce((a, b) => a + b, 0) / zVals.length;
   const varX = xVals.reduce((a, b) => a + (b - meanX) ** 2, 0) / xVals.length;
   const varZ = zVals.reduce((a, b) => a + (b - meanZ) ** 2, 0) / zVals.length;
-  // Normalizado 0..1 contra um máximo de 3 m/s²
   return Math.min(1, Math.sqrt(varX + varZ) / 3);
 }
 
@@ -112,7 +121,11 @@ function lateralNoise(samples: RawSample[]): number {
 /**
  * Máquina de estados para deteção de fases de repetição.
  * Optimizado para supino reto (eixo Y = vertical quando tlm no braço).
- * Funciona de forma tolerante - não exige sequência perfeita.
+ *
+ * REGRA DE SEGURANÇA:
+ * - Nenhuma fase avança automaticamente por tempo (sem timer-based transitions)
+ * - Timeouts resetam para idle, NUNCA avançam a rep
+ * - Uma rep só é concluída se houver amplitude física suficiente
  */
 export class RepPhaseDetector {
   private phase: RepPhase = 'idle';
@@ -120,13 +133,13 @@ export class RepPhaseDetector {
   private phaseBuffer: RawSample[] = [];
   private phaseTimings: Partial<Record<RepPhase, number>> = {};
 
-  // Histórico de aceleração vertical suavizado
+  // Histórico de aceleração vertical suavizado (alpha baixo = mais lento, mais estável)
   private smoothY = 0;
-  private readonly alpha = 0.2;
+  private readonly alpha = 0.15;
 
-  // Amplitude máxima detetada na fase excêntrica
+  // Amplitude real detetada na fase excêntrica
   private peakDelta = 0;
-  private minDelta = Infinity;
+  private sessionStarted = false;
 
   reset() {
     this.phase = 'idle';
@@ -134,13 +147,8 @@ export class RepPhaseDetector {
     this.phaseBuffer = [];
     this.phaseTimings = {};
     this.peakDelta = 0;
-    this.minDelta = Infinity;
   }
 
-  /**
-   * Processa uma nova amostra do acelerómetro.
-   * Retorna null se a fase não mudou, ou {newPhase, timings, amplitude} se mudou.
-   */
   processSample(sample: RawSample): {
     newPhase: RepPhase;
     phaseTimings: Partial<Record<RepPhase, number>>;
@@ -148,16 +156,15 @@ export class RepPhaseDetector {
     repCompleted: boolean;
     phaseSamples: RawSample[];
   } | null {
-    // Suavizar eixo Y (aceleração vertical)
     const mag = magnitude(sample.x, sample.y, sample.z);
     const delta = Math.abs(mag - GRAVITY);
     this.smoothY = this.smoothY * (1 - this.alpha) + sample.y * this.alpha;
 
     this.phaseBuffer.push(sample);
-    // Manter buffer limitado
-    if (this.phaseBuffer.length > 60) this.phaseBuffer.shift();
+    if (this.phaseBuffer.length > 80) this.phaseBuffer.shift();
 
     const now = sample.timestamp;
+    if (this.phaseStartTime === 0) this.phaseStartTime = now;
     const phaseDuration = now - this.phaseStartTime;
 
     let newPhase: RepPhase | null = null;
@@ -165,69 +172,95 @@ export class RepPhaseDetector {
 
     switch (this.phase) {
       case 'idle': {
-        // Movimento suficiente para arrancar
-        if (delta > IDLE_THRESHOLD && phaseDuration > 100) {
-          newPhase = this.smoothY < -0.5 ? 'eccen' : 'concen';
+        // Exige delta ELEVADO para sair de idle — ruído e vibração de mesa não ativam
+        if (delta > IDLE_THRESHOLD && phaseDuration > 150) {
+          // Determinar direção: Y negativo = descida (eccen), Y positivo = subida (concen)
+          newPhase = this.smoothY < -1.0 ? 'eccen' : 'concen';
         }
         break;
       }
+
       case 'eccen': {
-        // Procurar inversão: Y começa a subir (chegou ao fundo)
-        if (this.smoothY > 0.4 && phaseDuration > MIN_PHASE_DURATION_MS) {
-          this.peakDelta = Math.max(this.peakDelta, delta);
+        // Manter registo de pico de amplitude
+        this.peakDelta = Math.max(this.peakDelta, delta);
+
+        // Inversão de Y (de negativo para positivo) = chegou ao fundo
+        if (this.smoothY > 0.8 && phaseDuration > MIN_PHASE_DURATION_MS) {
           newPhase = 'bottom';
         }
-        // Timeout: fase demasiado longa = reset
+
+        // TIMEOUT: não avança rep, reseta para idle
         if (phaseDuration > MAX_PHASE_DURATION_MS) {
           this.reset();
         }
         break;
       }
+
       case 'bottom': {
-        // Pausa < 1.5s e depois entra em concêntrica
-        if (delta > PHASE_CHANGE_THRESHOLD && phaseDuration > 150) {
-          newPhase = 'concen';
+        // Fundo: aguarda movimento para subir
+        // EXIGE delta > PHASE_CHANGE_THRESHOLD — não avança por timer
+        if (delta > PHASE_CHANGE_THRESHOLD && phaseDuration > MIN_PHASE_DURATION_MS) {
+          // Só avança se há amplitude real acumulada
+          if (this.peakDelta >= MIN_ACCEPTED_AMPLITUDE * 0.7) {
+            newPhase = 'concen';
+          }
         }
-        if (phaseDuration > 1500) {
-          newPhase = 'concen'; // força saída do fundo
+
+        // TIMEOUT: reseta para idle, NÃO completa rep
+        if (phaseDuration > MAX_PHASE_DURATION_MS) {
+          this.reset();
         }
         break;
       }
+
       case 'concen': {
-        // Y desce de novo → chegou ao topo
-        if (this.smoothY < -0.2 && phaseDuration > MIN_PHASE_DURATION_MS) {
-          this.minDelta = Math.min(this.minDelta, delta);
+        // Fase concêntrica: Y volta a descer = chegou ao topo
+        if (this.smoothY < -0.8 && phaseDuration > MIN_PHASE_DURATION_MS) {
           newPhase = 'top';
         }
+
+        // TIMEOUT: reseta para idle
         if (phaseDuration > MAX_PHASE_DURATION_MS) {
           this.reset();
         }
         break;
       }
+
       case 'top': {
-        // Pausa breve e volta ao idle ou eccen (rep seguinte)
-        if (phaseDuration > 300) {
-          const samples = [...this.phaseBuffer];
-          const timings = { ...this.phaseTimings };
+        // Topo/lockout: validar se houve movimento real suficiente
+        if (phaseDuration > MIN_PHASE_DURATION_MS) {
           const amp = this.peakDelta;
 
-          if (delta < IDLE_THRESHOLD) {
-            newPhase = 'idle';
+          if (amp >= MIN_ACCEPTED_AMPLITUDE) {
+            // Rep física real aceite — retornar resultado
+            const samples = [...this.phaseBuffer];
+            const timings = { ...this.phaseTimings };
+
+            const nextPhase: RepPhase = delta < IDLE_THRESHOLD ? 'idle' : 'eccen';
+            repCompleted = true;
+
+            this.peakDelta = 0;
+            this.phaseTimings = {};
+            this.phaseStartTime = now;
+            this.phase = nextPhase;
+            this.phaseBuffer = [];
+
+            return {
+              newPhase: nextPhase,
+              phaseTimings: timings,
+              amplitudeDelta: amp,
+              repCompleted,
+              phaseSamples: samples
+            };
           } else {
-            newPhase = 'eccen';
+            // Amplitude insuficiente para ser rep real — reset silencioso
+            this.reset();
           }
-          repCompleted = true;
+        }
 
-          // Reset para próxima rep
-          this.peakDelta = 0;
-          this.minDelta = Infinity;
-
-          this.phaseTimings = {};
-          this.phaseStartTime = now;
-          this.phase = newPhase;
-          this.phaseBuffer = [];
-
-          return { newPhase, phaseTimings: timings, amplitudeDelta: amp, repCompleted, phaseSamples: samples };
+        // TIMEOUT: reseta
+        if (phaseDuration > MAX_PHASE_DURATION_MS) {
+          this.reset();
         }
         break;
       }
@@ -237,7 +270,6 @@ export class RepPhaseDetector {
       this.phaseTimings[this.phase] = phaseDuration;
       const prevSamples = [...this.phaseBuffer];
       this.phaseBuffer = [];
-      const prevPhase = this.phase;
 
       this.phase = newPhase;
       this.phaseStartTime = now;
@@ -246,7 +278,7 @@ export class RepPhaseDetector {
         newPhase,
         phaseTimings: { ...this.phaseTimings },
         amplitudeDelta: this.peakDelta,
-        repCompleted,
+        repCompleted: false,
         phaseSamples: prevSamples
       };
     }
@@ -259,6 +291,7 @@ export class RepPhaseDetector {
   }
 
   getCurrentPhaseDuration(now: number): number {
+    if (this.phaseStartTime === 0) return 0;
     return now - this.phaseStartTime;
   }
 }
@@ -267,17 +300,12 @@ export class RepPhaseDetector {
 // EXECUTION QUALITY SCORER
 // ---------------------------------------------------------------------------
 
-/**
- * Pontuador de qualidade técnica da repetição.
- * Transforma dados das fases num score 0..1 com penalidades.
- */
 export class ExecutionQualityScorer {
   private referenceROM: number | null = null;
   private repHistory: number[] = [];
 
   calibrateIfValid(amplitudeDelta: number): boolean {
-    // Só calibra se a primeira rep tiver amplitude mínima plausível (> 2 m/s²)
-    if (this.referenceROM === null && amplitudeDelta > 2.0) {
+    if (this.referenceROM === null && amplitudeDelta > MIN_ACCEPTED_AMPLITUDE) {
       this.referenceROM = amplitudeDelta;
       return true;
     }
@@ -293,45 +321,38 @@ export class ExecutionQualityScorer {
     amplitudeDelta: number,
     phaseSamples: RawSample[]
   ): RepResult {
-    let baseScore = 0.55; // score base neutral
-    const penalties: string[] = [];
+    let baseScore = 0.50;
     let visualCap = 1.0;
 
     // ── 1. COMPLETUDE DE FASES ─────────────────────────────────────────────
     const hasEccen  = 'eccen'  in phaseTimings;
     const hasBottom = 'bottom' in phaseTimings;
     const hasConcen = 'concen' in phaseTimings;
-    const hasTop    = 'top'    in phaseTimings;
-
     const phasesComplete = hasEccen && hasBottom && hasConcen;
+
     if (!phasesComplete) {
-      baseScore -= 0.20;
+      baseScore -= 0.15;
       visualCap = Math.min(visualCap, CAP_INCOMPLETE_PHASES);
-      penalties.push('incomplete_phases');
     } else {
-      baseScore += 0.15; // bonus por fases completas
+      baseScore += 0.18;
     }
 
     // ── 2. CADÊNCIA POR FASE ───────────────────────────────────────────────
     const eccenMs  = phaseTimings['eccen']  ?? 0;
     const concenMs = phaseTimings['concen'] ?? 0;
-
     const eccenOk  = eccenMs  >= CADENCE_MIN_MS && eccenMs  <= CADENCE_MAX_MS;
     const concenOk = concenMs >= CADENCE_MIN_MS && concenMs <= CADENCE_MAX_MS;
     const cadenceOk = eccenOk && concenOk;
 
     if (!cadenceOk) {
       if (eccenMs < CADENCE_MIN_MS / 2 || concenMs < CADENCE_MIN_MS / 2) {
-        // Demasiado rápido = caótico
         baseScore -= 0.25;
         visualCap = Math.min(visualCap, CAP_CHAOTIC_CADENCE);
-        penalties.push('cadence_chaotic');
       } else {
         baseScore -= 0.10;
-        penalties.push('cadence_suboptimal');
       }
     } else {
-      baseScore += 0.10; // bonus cadência
+      baseScore += 0.12;
     }
 
     // ── 3. AMPLITUDE ──────────────────────────────────────────────────────
@@ -341,25 +362,21 @@ export class ExecutionQualityScorer {
       if (amplitudeRatio < 0.60) {
         baseScore -= 0.20;
         visualCap = Math.min(visualCap, CAP_INSUFFICIENT_AMP);
-        penalties.push('insufficient_amplitude');
       } else if (amplitudeRatio >= 0.90) {
-        baseScore += 0.12; // boa amplitude
+        baseScore += 0.12;
       }
     }
 
-    // ── 4. RUÍDO LATERAL (ESTABILIDADE) ───────────────────────────────────
+    // ── 4. RUÍDO LATERAL ──────────────────────────────────────────────────
     const noiseLevel = lateralNoise(phaseSamples);
     if (noiseLevel > NOISE_HIGH_THRESHOLD) {
       baseScore -= 0.15;
-      penalties.push('high_noise');
     } else if (noiseLevel < NOISE_MEDIUM_THRESHOLD) {
-      baseScore += 0.08; // bonus estabilidade
+      baseScore += 0.08;
     }
 
-    // ── FINAL SCORE ────────────────────────────────────────────────────────
-    const rawScore = Math.max(0, Math.min(1, baseScore));
-    const cappedScore = Math.min(rawScore, visualCap);
-    const finalScore = Math.max(0, Math.min(1, cappedScore));
+    const rawScore   = Math.max(0, Math.min(1, baseScore));
+    const finalScore = Math.max(0, Math.min(rawScore, visualCap));
 
     this.repHistory.push(finalScore);
     if (this.repHistory.length > 10) this.repHistory.shift();
@@ -374,7 +391,6 @@ export class ExecutionQualityScorer {
     };
   }
 
-  /** Score médio das últimas reps (suavizado) */
   getAverageScore(): number {
     if (this.repHistory.length === 0) return 0;
     return this.repHistory.reduce((a, b) => a + b, 0) / this.repHistory.length;
@@ -385,49 +401,29 @@ export class ExecutionQualityScorer {
 // VISUAL GAUGE MAPPER
 // ---------------------------------------------------------------------------
 
-/**
- * Converte executionQualityScore + rawMotion em visualGaugeProgress (0..100).
- * O score de qualidade tem peso dominante (82%). O rawMotion contribui ligeiramente (18%).
- * Agitação isolada não pode levar ao máximo.
- */
 export class VisualGaugeMapper {
   private smoothedGauge = 0;
-  private readonly alpha = 0.10; // suavização da gauge
+  private readonly alpha = 0.10;
 
-  /**
-   * @param qualityScore     0..1 (do ExecutionQualityScorer)
-   * @param rawMotionNorm    0..1 (magnitude acelerómetro normalizada)
-   * @param currentPhase     fase atual (influencia progresso visual)
-   * @param repProgress      0..1 progresso dentro da rep
-   */
   compute(
     qualityScore: number,
     rawMotionNorm: number,
     currentPhase: RepPhase,
     repProgress: number
   ): number {
-    // Componente de qualidade (dominante)
     const qualityComponent = qualityScore * WEIGHT_QUALITY;
-
-    // Componente de atividade bruta (minoritária) — para dar feedback imediato
-    // Cap máximo: rawMotion sozinho nunca passa de 30%
-    const rawCapped = Math.min(rawMotionNorm, 0.30);
+    const rawCapped    = Math.min(rawMotionNorm, 0.25);
     const rawComponent = rawCapped * WEIGHT_RAW;
 
-    // Base gauge: mistura ponderada
     let target = (qualityComponent + rawComponent) * 100;
 
-    // Boost de fase ativa (feedback imediato durante movimento)
     if (currentPhase !== 'idle') {
-      // Anima suavemente de acordo com o progresso dentro da rep
-      const phaseBoost = repProgress * 15; // máximo +15 pontos durante a rep
+      const phaseBoost = repProgress * 12;
       target = Math.min(100, target + phaseBoost);
     } else {
-      // Em idle, desce suavemente
-      target = target * 0.3;
+      target = target * 0.25; // descida rápida em idle
     }
 
-    // Low-pass filter para fluidez
     this.smoothedGauge = this.smoothedGauge * (1 - this.alpha) + target * this.alpha;
     return Math.max(0, Math.min(100, this.smoothedGauge));
   }
@@ -438,17 +434,13 @@ export class VisualGaugeMapper {
 }
 
 // ---------------------------------------------------------------------------
-// QUALITY ENGINE STATE MACHINE (ponto de entrada principal)
+// QUALITY ENGINE (ponto de entrada principal)
 // ---------------------------------------------------------------------------
 
-/**
- * Motor principal. Instanciado como singleton no facade.
- * Recebe amostras brutas e emite QualityEngineState a cada tick.
- */
 export class RepQualityEngine {
   private phaseDetector = new RepPhaseDetector();
-  private scorer = new ExecutionQualityScorer();
-  private gaugeMapper = new VisualGaugeMapper();
+  private scorer        = new ExecutionQualityScorer();
+  private gaugeMapper   = new VisualGaugeMapper();
 
   private state: QualityEngineState = {
     currentPhase: 'idle',
@@ -461,10 +453,10 @@ export class RepQualityEngine {
     lastRepResult: null,
   };
 
-  private celebrationTs = 0;
+  private celebrationTs   = 0;
   private lastQualityScore = 0;
   private phaseProgressMap: Record<RepPhase, number> = {
-    idle: 0, eccen: 0.15, bottom: 0.5, concen: 0.70, top: 0.95
+    idle: 0, eccen: 0.15, bottom: 0.50, concen: 0.70, top: 0.95
   };
 
   processSample(sample: RawSample): QualityEngineState {
@@ -475,41 +467,43 @@ export class RepQualityEngine {
       this.state.currentPhase = newPhase;
 
       if (repCompleted) {
-        // Tentar calibrar referência ROM
         this.scorer.calibrateIfValid(amplitudeDelta);
 
-        // Pontuar a repetição
         const repResult = this.scorer.scoreRep(phaseTimings, amplitudeDelta, phaseSamples);
-        this.lastQualityScore = repResult.executionQualityScore;
         this.state.lastRepResult = repResult;
-        this.state.repCount += 1;
         this.state.executionQualityScore = repResult.executionQualityScore;
         this.state.referenceROM = this.scorer.getReferenceROM();
 
-        // Microcelebração
-        if (repResult.executionQualityScore >= CELEBRATION_THRESHOLD) {
-          this.state.celebrationTrigger = true;
-          this.celebrationTs = sample.timestamp;
+        // ── NOISE GATE: só conta se há movimento físico real suficiente ──
+        // amplitude física mínima E qualidade acima do limiar de ruído
+        const isRealMovement = amplitudeDelta >= MIN_ACCEPTED_AMPLITUDE;
+        const passesQualityGate = repResult.executionQualityScore >= MIN_QUALITY_FOR_COUNT;
+
+        if (isRealMovement && passesQualityGate) {
+          this.lastQualityScore = repResult.executionQualityScore;
+          this.state.repCount += 1;
+
+          if (repResult.executionQualityScore >= CELEBRATION_THRESHOLD) {
+            this.state.celebrationTrigger = true;
+            this.celebrationTs = sample.timestamp;
+          }
         }
+        // Movimento insuficiente ou ruído: repCount NÃO incrementa, gauge não celebra
       }
     }
 
-    // Desativar celebração após 1.8s
     if (this.state.celebrationTrigger && sample.timestamp - this.celebrationTs > 1800) {
       this.state.celebrationTrigger = false;
     }
 
-    // Calcular repProgress (0..1) com base na fase
     const phaseBase = this.phaseProgressMap[this.state.currentPhase] ?? 0;
     const phaseDuration = this.phaseDetector.getCurrentPhaseDuration(sample.timestamp);
     const phaseProgressBump = Math.min(0.2, phaseDuration / 3000 * 0.2);
     this.state.repProgress = Math.min(1, phaseBase + phaseProgressBump);
 
-    // Calcular rawMotion normalizado (0..1)
-    const mag = magnitude(sample.x, sample.y, sample.z);
+    const mag    = magnitude(sample.x, sample.y, sample.z);
     const rawNorm = Math.min(1, Math.abs(mag - GRAVITY) / 12);
 
-    // Computar gauge visual
     this.state.visualGaugeProgress = this.gaugeMapper.compute(
       this.lastQualityScore,
       rawNorm,

@@ -54,6 +54,16 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
    const editingTimerRef = useRef<any>(null);
    const prevCompletedSetsRef = useRef(0);
 
+   // ── ESTADO DE PLANO E DESCANSO ───────────────────────────────────
+   type ScreenPhase = 'active_exercise' | 'rest_after_exercise_complete';
+   const [screenPhase, setScreenPhase] = useState<ScreenPhase>('active_exercise');
+   // Supino reto = exercício composto → 90s de descanso (fallback Prioridade 2)
+   const REST_DURATION_S = 90;
+   const [restTimerSeconds, setRestTimerSeconds] = useState(REST_DURATION_S);
+   const [restOverrunSeconds, setRestOverrunSeconds] = useState(0);
+   const [restBlinkOn, setRestBlinkOn] = useState(true);
+   const nextCTAPulse = useRef(new Animated.Value(1)).current;
+
    useEffect(() => { weightRef.current = weightRecommended; }, [weightRecommended]);
 
    // ── PERSISTÊNCIA LOCAL DAS METAS ──────────────────────────────────────
@@ -250,13 +260,19 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
       }
    }, [kinematics.celebrationTrigger]);
 
-   // ── REPS: ligadas ao RepQualityEngine via kinematics.repCount ──────────
-   // repCount = total acumulado de reps detetadas pelo sensor nesta sessão
-   const totalRepsDetected = isRunning ? kinematics.repCount : 0;
-   const completedSets    = Math.floor(totalRepsDetected / targetRepsPerSet);
-   const currentRep       = totalRepsDetected % targetRepsPerSet; // reps dentro da série ativa
-   const currentSet       = Math.min(completedSets + 1, targetSets);
-   const isTrainingDone   = completedSets >= targetSets;
+   // ── REPS: derivadas do sensor (cap no limite planeado) ────────────────
+   const totalAcceptedReps  = isRunning ? kinematics.repCount : 0;
+   const maxPlanReps         = targetSets * targetRepsPerSet;
+   // Séries concluídas: cap no targetSets (não ultrapassa)
+   const completedSets       = Math.min(Math.floor(totalAcceptedReps / targetRepsPerSet), targetSets);
+   // Reps dentro da série atual: se plano concluído, mostra o máximo
+   const currentRepsInSet    = completedSets >= targetSets
+      ? targetRepsPerSet
+      : totalAcceptedReps % targetRepsPerSet;
+   const currentSet          = Math.min(completedSets + 1, targetSets);
+   const exercisePlanCompleted = completedSets >= targetSets && totalAcceptedReps >= maxPlanReps;
+   // Reps extra após o plano (separado do display planeado)
+   const extraAcceptedReps   = exercisePlanCompleted ? Math.max(0, totalAcceptedReps - maxPlanReps) : 0;
 
    // Deteção de série completa → feedback no anel
    // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -264,11 +280,66 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
       if (!isRunning) return;
       if (completedSets > prevCompletedSetsRef.current && completedSets <= targetSets) {
          prevCompletedSetsRef.current = completedSets;
-         const label = completedSets >= targetSets ? 'TREINO OK!' : `SÉRIE ${completedSets} OK`;
-         setSetCompleteLabel(label);
-         setTimeout(() => setSetCompleteLabel(null), 2200);
+         // Ao concluir o plano completo → entrar em modo descanso
+         if (completedSets >= targetSets) {
+            setSetCompleteLabel('PLANO OK!');
+            setTimeout(() => setSetCompleteLabel(null), 2500);
+            // Transitar para fase de descanso
+            setScreenPhase('rest_after_exercise_complete');
+            setRestTimerSeconds(REST_DURATION_S);
+            setRestOverrunSeconds(0);
+            setRestBlinkOn(true);
+            // Pulso no CTA de exercício seguinte
+            Animated.loop(
+               Animated.sequence([
+                  Animated.timing(nextCTAPulse, { toValue: 0.65, duration: 900, useNativeDriver: false }),
+                  Animated.timing(nextCTAPulse, { toValue: 1, duration: 900, useNativeDriver: false }),
+               ])
+            ).start();
+         } else {
+            const label = `SÉRIE ${completedSets} OK`;
+            setSetCompleteLabel(label);
+            setTimeout(() => setSetCompleteLabel(null), 2200);
+         }
       }
    }, [completedSets, isRunning, targetSets]);
+
+   // Temporizador de descanso
+   useEffect(() => {
+      if (screenPhase !== 'rest_after_exercise_complete') return;
+      const interval = setInterval(() => {
+         setRestTimerSeconds(s => {
+            if (s > 0) return s - 1;
+            setRestOverrunSeconds(o => o + 1);
+            return 0;
+         });
+      }, 1000);
+      return () => clearInterval(interval);
+   }, [screenPhase]);
+
+   // Piscar após 0:00
+   useEffect(() => {
+      if (restTimerSeconds > 0) { setRestBlinkOn(true); return; }
+      const blink = setInterval(() => setRestBlinkOn(v => !v), 700);
+      return () => clearInterval(blink);
+   }, [restTimerSeconds]);
+
+   // Cor dinâmica do descanso: branco → amarelo → laranja → vermelho
+   const getRestColor = (): string => {
+      if (restTimerSeconds > 0) return '#ffffff';
+      const o = restOverrunSeconds;
+      if (o <= 60) {
+         // amarelo pulsante
+         return '#ffd700';
+      }
+      if (o <= 120) {
+         // interpolação laranja → vermelho
+         const t = (o - 60) / 60;
+         const g = Math.round(165 * (1 - t));
+         return `rgb(255,${g},0)`;
+      }
+      return '#ff2d00'; // vermelho forte
+   };
 
    // Integração do Motor Dedutivo de Plano de Treino
    const trainingEngine = useMotionTrainingFacade();
@@ -378,10 +449,10 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
 
                                  <View style={{ alignItems: 'flex-end' }}>
                                     <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 10, letterSpacing: 1, marginBottom: 2 }]}>REPS</Text>
-                                    <Text style={{ color: theme.colors.textMain, fontSize: 18, fontWeight: '900', marginBottom: 4 }}>{currentRep}<Text style={{ fontSize: 11, color: theme.colors.textSecondary }}>/{targetRepsPerSet}</Text></Text>
+                                    <Text style={{ color: theme.colors.textMain, fontSize: 18, fontWeight: '900', marginBottom: 4 }}>{currentRepsInSet}<Text style={{ fontSize: 11, color: theme.colors.textSecondary }}>/{targetRepsPerSet}</Text></Text>
                                     <View style={{ flexDirection: 'row', gap: 2, flexWrap: 'wrap', width: 64, justifyContent: 'flex-end' }}>
                                        {Array.from({ length: Math.min(targetRepsPerSet, 15) }).map((_, i) => (
-                                          <View key={i} style={{ width: 8, height: 4, backgroundColor: i < currentRep ? theme.colors.textMain : theme.colors.outline, borderRadius: 2 }} />
+                                          <View key={i} style={{ width: 8, height: 4, backgroundColor: i < currentRepsInSet ? theme.colors.textMain : theme.colors.outline, borderRadius: 2 }} />
                                        ))}
                                     </View>
                                  </View>
@@ -397,40 +468,38 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
                                     {/* Anel controlado por visualGaugeProgress (qualidade técnica) */}
                                     {renderRing(kinematics.visualGaugeProgress, trainingDialSizeMobile, 10)}
 
-                                    <View style={[styles.effortCenterLabel, { width: trainingDialSizeMobile, height: trainingDialSizeMobile }]}>
-                                       {/* Relógio principal */}
-                                       <Text style={[styles.effortValue, { color: getEffortColor(), fontSize: 62, lineHeight: 68 }]}>
-                                          {formatTime(seconds)}
-                                       </Text>
-
-                                       {/* Label de fase — ou feedback de série completa */}
-                                       <Text style={[styles.effortUnit, { color: setCompleteLabel ? '#ff4757' : getEffortColor(), marginTop: 4, fontSize: 12, letterSpacing: 1.5, fontWeight: setCompleteLabel ? '900' : '700' }]}>
-                                          {setCompleteLabel ?? getPhaseLabel()}
-                                       </Text>
-
-                                       {/* Instrução pré-arranque */}
-                                       {!isRunning && (
-                                          <Animated.Text style={{ opacity: pulseAnim, color: theme.colors.textSecondary, fontSize: 12, marginTop: 8, letterSpacing: 1, position: 'absolute', bottom: 40 }}>
-                                             mova {getTargetLimb()}
-                                          </Animated.Text>
-                                       )}
-
-                                       {/* Microcelebração premium */}
-                                       <Animated.Text
-                                          style={{
-                                             opacity: celebrationOpacity,
-                                             position: 'absolute',
-                                             top: trainingDialSizeMobile * 0.16,
-                                             fontSize: 13,
-                                             fontWeight: '900',
-                                             letterSpacing: 2,
-                                             color: '#ff4757',
-                                             textTransform: 'uppercase',
-                                          }}
-                                       >
-                                          {celebrationLabels[celebrationLabelRef.current]}
-                                       </Animated.Text>
-                                    </View>
+                                     <View style={[styles.effortCenterLabel, { width: trainingDialSizeMobile, height: trainingDialSizeMobile }]}>
+                                        {screenPhase === "rest_after_exercise_complete" ? (
+                                           <>
+                                              <Text style={[styles.effortValue, { color: getRestColor(), fontSize: 52, lineHeight: 58, opacity: restTimerSeconds > 0 ? 1 : (restBlinkOn ? 1 : 0.2) }]}>
+                                                 {restTimerSeconds > 0 ? `${String(Math.floor(restTimerSeconds/60)).padStart(2,"0")}:${String(restTimerSeconds%60).padStart(2,"0")}` : `-${String(Math.floor(restOverrunSeconds/60)).padStart(2,"0")}:${String(restOverrunSeconds%60).padStart(2,"0")}`}
+                                              </Text>
+                                              <Text style={[styles.effortUnit, { color: getRestColor(), marginTop: 6, fontSize: 11, letterSpacing: 2, fontWeight: "700" }]}>
+                                                 {restTimerSeconds > 0 ? "DESCANSO" : "A ULTRAPASSAR"}
+                                              </Text>
+                                           </>
+                                        ) : (
+                                           <>
+                                              <Text style={[styles.effortValue, { color: getEffortColor(), fontSize: 62, lineHeight: 68 }]}>
+                                                 {formatTime(seconds)}
+                                              </Text>
+                                              <Text style={[styles.effortUnit, { color: setCompleteLabel ? "#ff4757" : getEffortColor(), marginTop: 4, fontSize: 12, letterSpacing: 1.5, fontWeight: setCompleteLabel ? "900" : "700" }]}>
+                                                 {setCompleteLabel ?? getPhaseLabel()}
+                                              </Text>
+                                              {!isRunning && (
+                                                 <Animated.Text style={{ opacity: pulseAnim, color: theme.colors.textSecondary, fontSize: 12, marginTop: 8, letterSpacing: 1, position: "absolute", bottom: 40 }}>
+                                                    mova {getTargetLimb()}
+                                                 </Animated.Text>
+                                              )}
+                                           </>
+                                        )}
+                                        <Animated.Text style={{ opacity: celebrationOpacity, position: "absolute", top: trainingDialSizeMobile * 0.16, fontSize: 13, fontWeight: "900", letterSpacing: 2, color: "#ff4757", textTransform: "uppercase" }}>
+                                           {celebrationLabels[celebrationLabelRef.current]}
+                                        </Animated.Text>
+                                        {extraAcceptedReps > 0 && (
+                                           <Text style={{ position: "absolute", bottom: 28, color: theme.colors.textSecondary, fontSize: 10, letterSpacing: 1.5, fontWeight: "700" }}>+{extraAcceptedReps} EXTRA</Text>
+                                        )}
+                                     </View>
                                  </TouchableOpacity>
 
                                  {/* Badge de debug/simulação */}
@@ -459,13 +528,33 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
                                  {/* COLUNA ESQUERDA: NAVEGAÇÃO (56-62%) */}
                                  <View style={{ width: '60%' }}>
                                     {/* A SEGUIR */}
-                                    <TouchableOpacity activeOpacity={0.8} style={[styles.heroBlock, { backgroundColor: theme.colors.cardBg, borderColor: theme.colors.outline, height: trainingBottomCardHeightMobile, position: 'relative', overflow: 'hidden', justifyContent: 'center', marginBottom: 0 }]}>
-                                       <Image source={aberturaBg} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', opacity: 0.6, resizeMode: 'cover', transform: [{ scale: 1.6 }, { translateY: -5 }] }} />
-                                       <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.cardBg, opacity: 0.2 }} />
-                                       <View style={{ paddingHorizontal: 8, zIndex: 10, flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                                          <Text style={{ color: theme.colors.primary, fontSize: isSm ? 13 : 14, lineHeight: isSm ? 15 : 16, textAlign: 'center', fontWeight: '900', fontStyle: 'italic' }} numberOfLines={2}>{nextExerciseName.toLowerCase()}</Text>
-                                       </View>
-                                    </TouchableOpacity>
+                                     {/* A SEGUIR — destacado quando plano concluido */}
+                                     <Animated.View style={{ opacity: exercisePlanCompleted ? nextCTAPulse : 1 }}>
+                                        <TouchableOpacity
+                                           activeOpacity={0.8}
+                                           style={[styles.heroBlock, {
+                                              backgroundColor: theme.colors.cardBg,
+                                              borderColor: exercisePlanCompleted ? theme.colors.primary : theme.colors.outline,
+                                              borderWidth: exercisePlanCompleted ? 2 : 1,
+                                              height: trainingBottomCardHeightMobile,
+                                              position: "relative",
+                                              overflow: "hidden",
+                                              justifyContent: "center",
+                                              marginBottom: 0,
+                                           }]}
+                                        >
+                                           <Image source={aberturaBg} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, width: "100%", height: "100%", opacity: exercisePlanCompleted ? 0.85 : 0.6, resizeMode: "cover", transform: [{ scale: 1.6 }, { translateY: -5 }] }} />
+                                           <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.cardBg, opacity: 0.2 }} />
+                                           {exercisePlanCompleted && (
+                                              <View style={{ position: "absolute", top: -9, right: 10, backgroundColor: theme.colors.primary, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, zIndex: 20 }}>
+                                                 <Text style={{ color: "#000", fontSize: 9, fontWeight: "900", letterSpacing: 1.5 }}>AVAN{"\u00c7"}AR</Text>
+                                              </View>
+                                           )}
+                                           <View style={{ paddingHorizontal: 8, zIndex: 10, flex: 1, justifyContent: "center", alignItems: "center" }}>
+                                              <Text style={{ color: theme.colors.primary, fontSize: isSm ? 13 : 14, lineHeight: isSm ? 15 : 16, textAlign: "center", fontWeight: "900", fontStyle: "italic" }} numberOfLines={2}>{nextExerciseName.toLowerCase()}</Text>
+                                           </View>
+                                        </TouchableOpacity>
+                                     </Animated.View>
                                  </View>
 
                                  {/* COLUNA DIREITA: CARGA (26-32%) */}
