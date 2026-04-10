@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Platform, PanResponder, useWindowDimensions, Animated, Dimensions } from 'react-native';
 import { ClipboardList, Smartphone, MapPin } from 'lucide-react';
 import { useMotionTheme } from '../../../theme/useMotionTheme';
@@ -378,9 +378,9 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
 
                                  <View style={{ alignItems: 'flex-end' }}>
                                     <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 10, letterSpacing: 1, marginBottom: 2 }]}>REPS</Text>
-                                    <Text style={{ color: theme.colors.textMain, fontSize: 18, fontWeight: '900', marginBottom: 4 }}>{currentRep}<Text style={{ fontSize: 11, color: theme.colors.textSecondary }}>/{targetReps}</Text></Text>
+                                    <Text style={{ color: theme.colors.textMain, fontSize: 18, fontWeight: '900', marginBottom: 4 }}>{currentRep}<Text style={{ fontSize: 11, color: theme.colors.textSecondary }}>/{targetRepsPerSet}</Text></Text>
                                     <View style={{ flexDirection: 'row', gap: 2, flexWrap: 'wrap', width: 64, justifyContent: 'flex-end' }}>
-                                       {Array.from({ length: targetReps }).map((_, i) => (
+                                       {Array.from({ length: Math.min(targetRepsPerSet, 15) }).map((_, i) => (
                                           <View key={i} style={{ width: 8, height: 4, backgroundColor: i < currentRep ? theme.colors.textMain : theme.colors.outline, borderRadius: 2 }} />
                                        ))}
                                     </View>
