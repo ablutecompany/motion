@@ -11,6 +11,7 @@ import { useMotionTrainingFacade } from '../../../facades/useMotionTrainingFacad
 import { MotionBottomNav } from '../../components/MotionBottomNav';
 import { MotionProgressScreen } from '../MotionProgress';
 import type { RepPhase } from '../../../engines/repQualityEngine';
+import { SensorDebugPanel } from '../../components/SensorDebugPanel';
 
 export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
    const theme = useMotionTheme();
@@ -361,6 +362,8 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
             {activeTab === 'Treino' && (
                <View style={{ flex: 1, display: 'flex', flexDirection: 'column', paddingBottom: 24 }}>
                   
+                   {/* === PAINEL DE DIAGNOSTICO DE SENSORES (RC1.1) === */}
+                   <SensorDebugPanel />
                   {engineState.planStatus === 'no_plan' && (
                      <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 64 }}>
                         <Text style={[styles.heroHeadline, { color: theme.colors.textSecondary, textAlign: 'center' }]}>SEM PLANO GERADO</Text>
