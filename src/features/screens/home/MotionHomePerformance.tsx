@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Platform, PanResponder, useWindowDimensions, Animated, Dimensions } from 'react-native';
 import { ClipboardList, Smartphone, MapPin } from 'lucide-react';
 import { useMotionTheme } from '../../../theme/useMotionTheme';
@@ -11,7 +11,46 @@ import { useMotionTrainingFacade } from '../../../facades/useMotionTrainingFacad
 import { MotionBottomNav } from '../../components/MotionBottomNav';
 import { MotionProgressScreen } from '../MotionProgress';
 import type { RepPhase } from '../../../engines/repQualityEngine';
+import type { KinematicsSource, PermissionState, SensorStatus } from '../../../facades/useMotionKinematicsFacade';
 import { SensorDebugPanel } from '../../components/SensorDebugPanel';
+
+// ─── Fonte única de render para todo o módulo Treino ────────────────────────
+// Derivado no render de MotionHomePerformance, lido por SensorDebugPanel,
+// badge sensor, anel, REPS e SÉRIES — NUNCA reconstruído em ramos separados.
+export interface TrainingRenderState {
+  // Hardware (do kinematics.debug — 4 Hz throttle, ok para dados raw de hw)
+  sensorStatus: SensorStatus;
+  motionPermission: PermissionState;
+  orientationPermission: PermissionState;
+  hasAIG: boolean;
+  hasACC: boolean;
+  hasRR: boolean;
+  hasOri: boolean;
+  motionEventCount: number;
+  motionIntervalMs: number;
+  aigX: number | null; aigY: number | null; aigZ: number | null;
+  accX: number | null; accY: number | null; accZ: number | null;
+  oriBeta: number | null; oriGamma: number | null;
+  rejectionReason: string;
+  // Pipeline (do kinematics canonical — mesma frequência que o anel e REPS)
+  currentPhase: RepPhase;
+  phaseLabel: string;   // tradução explícita: MESMA que o anel mostra
+  score: number;
+  amplitude: number;
+  repCount: number;           // total acumulado no motor
+  // Valores de display: EXATAMENTE o que REPS e SÉRIE mostram no UI
+  currentRepsInSet: number;   // reps na série atual (= bloco REPS)
+  completedSets: number;      // séries concluídas
+  currentSet: number;         // série atual visua l (1-indexed)
+  targetRepsPerSet: number;   // objetivo por série
+  targetSets: number;         // total de séries no plano
+  rejectionReason: string;    // razão de rejeição fresca
+  source: KinematicsSource;
+  isAvailable: boolean;
+  isSimulated: boolean;
+  // Ação de permissão
+  onRequestPermission: () => void;
+}
 
 export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
    const theme = useMotionTheme();
@@ -143,7 +182,10 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
    // -------------------------------------------------------------
    // KINEMATICS ENGINE (O "Conta-Rotações")
    // -------------------------------------------------------------
-   const kinematics = useMotionKinematicsFacade(isRunning);
+   // RC1.4: sensores activos SEMPRE — não dependem de isRunning.
+   // O motor corre desde que a página está activa. isRunning controla apenas o cronómetro.
+   // Isto elimina a divergência onde debug mostrava fase real e anel mostrava 'TOCAR/INICIAR'.
+   const kinematics = useMotionKinematicsFacade(true);
 
    useEffect(() => {
       let interval: any;
@@ -187,7 +229,7 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
 
    // ── NOVA LÓGICA: cor baseada em qualidade técnica, não velocidade ─────────
    const getEffortColor = () => {
-      if (!kinematics.isAvailable) return theme.colors.outline;
+      if (!trs.isAvailable) return theme.colors.outline;
       // qualityTier: idle → partial → good → excellent
       switch (kinematics.qualityTier) {
          case 'excellent': return '#ff4757'; // vermelho quente — execução perfeita
@@ -198,18 +240,20 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
       }
    };
 
-   // Label de fase para o centro do anel
-   const getPhaseLabel = (): string => {
-      if (!isRunning) return 'TOCAR/INICIAR';
-      switch (kinematics.currentPhase) {
-         case 'eccen':  return 'DESCIDA';
-         case 'bottom': return 'FUNDO';
-         case 'concen': return 'SUBIDA';
-         case 'top':    return 'TOPO';
-         case 'idle':
-         default:       return 'EM CURSO';
-      }
+   // RC1.4 — Label de fase derivada directamente de kinematics.currentPhase (= trs.currentPhase).
+   // MESMA fonte que o debug panel. Sem gate de isRunning.
+   // Mapeamento explícito e único: canonical string → UI label.
+   // Quando idle e isRunning=false: 'TOCAR/INICIAR'. Quando idle mas engine em movimento: 'EM CURSO'.
+   const PHASE_LABEL: Record<RepPhase, string> = {
+      idle:   isRunning ? 'EM CURSO' : 'TOCAR/INICIAR',
+      eccen:  'DESCIDA',
+      bottom: 'FUNDO',
+      concen: 'SUBIDA',
+      top:    'TOPO',
    };
+   // kinematics.currentPhase === trs.currentPhase: mesmo engineState.currentPhase
+   const getPhaseLabel = (): string => PHASE_LABEL[kinematics.currentPhase] ?? 'EM CURSO';
+
 
    // ── ANEL: usa visualGaugeProgress (qualidade), não rawMotion ────────────
    const renderRing = (gaugeValue: number, size: number, stroke: number) => {
@@ -261,8 +305,9 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
       }
    }, [kinematics.celebrationTrigger]);
 
-   // ── REPS: derivadas do sensor (cap no limite planeado) ────────────────
-   const totalAcceptedReps  = isRunning ? kinematics.repCount : 0;
+   // RC1.5: usar kinematics.repCount directamente (mesmo valor que trs.repCount,
+   // mas trs só é definido abaixo). Evita forward-reference TDZ crash.
+   const totalAcceptedReps  = kinematics.repCount;
    const maxPlanReps         = targetSets * targetRepsPerSet;
    // Séries concluídas: cap no targetSets (não ultrapassa)
    const completedSets       = Math.min(Math.floor(totalAcceptedReps / targetRepsPerSet), targetSets);
@@ -354,6 +399,45 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
    const exerciseDetails = engineState.currentExercise?.details || "";
    const nextExerciseName = engineState.nextExercise?.name || "Fim Previsto";
 
+   // ── OBJETO Único DE RENDER (RC1.5) ─────────────────────────────────────
+   // RC1.5: adicionados currentRepsInSet / completedSets / currentSet /
+   // targetRepsPerSet / targetSets — MESMOS valores que o bloco REPS e SÉRIE.
+   // O debug mostra estes valores directamente, não só o repCount bruto do motor.
+   const trs: TrainingRenderState = {
+      // Hardware (do kinematics.debug — 4 Hz throttle, ok para dados raw de hw)
+      sensorStatus:         kinematics.debug.sensorStatus,
+      motionPermission:     kinematics.debug.motionPermission,
+      orientationPermission: kinematics.debug.orientationPermission,
+      hasAIG: kinematics.debug.hasAccelerationIncludingGravity,
+      hasACC: kinematics.debug.hasAcceleration,
+      hasRR:  kinematics.debug.hasRotationRate,
+      hasOri: kinematics.debug.hasOrientation,
+      motionEventCount: kinematics.debug.motionEventCount,
+      motionIntervalMs: kinematics.debug.motionIntervalMs,
+      aigX: kinematics.debug.aigX, aigY: kinematics.debug.aigY, aigZ: kinematics.debug.aigZ,
+      accX: kinematics.debug.accX, accY: kinematics.debug.accY, accZ: kinematics.debug.accZ,
+      oriBeta:  kinematics.debug.oriBeta,
+      oriGamma: kinematics.debug.oriGamma,
+      rejectionReason: kinematics.rejectionReason, // RC1.7: bica do motor, não do debug throttled
+      // Pipeline canónico (mesma frequência que anel e REPS)
+      currentPhase: kinematics.currentPhase,
+      phaseLabel:   PHASE_LABEL[kinematics.currentPhase] ?? 'EM CURSO',
+      score:        kinematics.executionQualityScore,
+      amplitude:    kinematics.visualGaugeProgress,
+      repCount:     kinematics.repCount,
+      // Valores de display: EXATAMENTE o que o bloco REPS e SÉRIE mostram
+      currentRepsInSet,
+      completedSets,
+      currentSet,
+      targetRepsPerSet,
+      targetSets,
+      source:       kinematics.source,
+      isAvailable:  kinematics.isAvailable,
+      isSimulated:  kinematics.isSimulated,
+      onRequestPermission: kinematics.requestSensorPermission,
+   };
+
+
    return (
       <View style={{ flex: 1, height: Platform.OS === 'web' ? '100dvh' : '100%', overflow: 'hidden', backgroundColor: theme.colors.pageBg }}>
          <ScrollView style={[styles.container, { backgroundColor: 'transparent' }]} contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
@@ -362,8 +446,8 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
             {activeTab === 'Treino' && (
                <View style={{ flex: 1, display: 'flex', flexDirection: 'column', paddingBottom: 24 }}>
                   
-                   {/* === PAINEL DE DIAGNOSTICO DE SENSORES (RC1.1) === */}
-                   <SensorDebugPanel />
+                   {/* === PAINEL DE DIAGNOSTICO DE SENSORES (RC1.3 — TrainingRenderState único) === */}
+                   <SensorDebugPanel state={trs} />
                   {engineState.planStatus === 'no_plan' && (
                      <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 64 }}>
                         <Text style={[styles.heroHeadline, { color: theme.colors.textSecondary, textAlign: 'center' }]}>SEM PLANO GERADO</Text>
@@ -434,15 +518,15 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
                                   <Text style={[styles.metricLabel, { color: theme.colors.textSecondary, fontSize: 10, letterSpacing: 1, marginBottom: 4 }]}>SENSOR</Text>
                                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                                        <Smartphone size={14} color={kinematics.debug.sensorStatus === "EVENTS_OK" ? theme.colors.primary : kinematics.debug.sensorStatus === "PARTIAL_DATA" ? "#ffd700" : theme.colors.textSecondary} />
-                                        <Text style={{ color: kinematics.debug.sensorStatus === "EVENTS_OK" ? theme.colors.primary : kinematics.debug.sensorStatus === "PARTIAL_DATA" ? "#ffd700" : theme.colors.textSecondary, fontSize: 11, fontWeight: "800" }}>
-                                           {kinematics.debug.sensorStatus === "EVENTS_OK" ? "Sensores ativos" : kinematics.debug.sensorStatus === "PARTIAL_DATA" ? "Sensores parciais" : kinematics.debug.motionPermission === "denied" ? "Permissao recusada" : kinematics.debug.motionPermission === "unknown" ? "Sem dados" : "S/ sensor"}
+                                        <Smartphone size={14} color={trs.sensorStatus === "EVENTS_OK" ? theme.colors.primary : trs.sensorStatus === "PARTIAL_DATA" ? "#ffd700" : theme.colors.textSecondary} />
+                                        <Text style={{ color: trs.sensorStatus === "EVENTS_OK" ? theme.colors.primary : trs.sensorStatus === "PARTIAL_DATA" ? "#ffd700" : theme.colors.textSecondary, fontSize: 11, fontWeight: "800" }}>
+                                           {trs.sensorStatus === "EVENTS_OK" ? "Sensores ativos" : trs.sensorStatus === "PARTIAL_DATA" ? "Sensores parciais" : trs.motionPermission === "denied" ? "Permissão recusada" : trs.motionPermission === "unknown" ? "iOS: ativar sensores" : "Aguardar sensor..."}
                                         </Text>
                                      </View>
                                      {/* Botao Ativar Sensores — iOS exige gesto de utilizador */}
-                                     {(kinematics.debug.motionPermission === "unknown" || kinematics.debug.sensorStatus === "NO_EVENTS") && (
+                                     {trs.motionPermission === "unknown" && (
                                         <TouchableOpacity
-                                           onPress={kinematics.requestSensorPermission}
+                                           onPress={trs.onRequestPermission}
                                            style={{ backgroundColor: theme.colors.primary + "22", borderWidth: 1, borderColor: theme.colors.primary, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 3 }}
                                         >
                                            <Text style={{ color: theme.colors.primary, fontSize: 10, fontWeight: "900", letterSpacing: 1 }}>ATIVAR SENSORES</Text>
@@ -482,7 +566,7 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
                               <Animated.View style={[styles.meterWrapper, { width: trainingDialSizeMobile, height: trainingDialSizeMobile, transform: [{ scale: celebrationScale }] }]}>
                                  <TouchableOpacity activeOpacity={0.8} onPress={handleClockPress}>
                                     {/* Anel controlado por visualGaugeProgress (qualidade técnica) */}
-                                    {renderRing(kinematics.visualGaugeProgress, trainingDialSizeMobile, 10)}
+                                    {renderRing(trs.amplitude, trainingDialSizeMobile, 10)}
 
                                      <View style={[styles.effortCenterLabel, { width: trainingDialSizeMobile, height: trainingDialSizeMobile }]}>
                                         {screenPhase === "rest_after_exercise_complete" ? (
@@ -519,17 +603,17 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
                                  </TouchableOpacity>
 
                                  {/* Badge de debug/simulação */}
-                                 {kinematics.isSimulated && isRunning && (
+                                 {trs.isSimulated && isRunning && (
                                     <Text style={{ fontSize: 11, color: theme.colors.warning, position: 'absolute', bottom: -20, fontFamily: 'monospace', fontWeight: 'bold' }}>MOCK SENSOR</Text>
                                  )}
-                                 {kinematics.source === 'unsupported' && isRunning && (
+                                 {trs.source === 'unsupported' && isRunning && (
                                     <Text style={{ fontSize: 11, color: theme.colors.textSecondary, position: 'absolute', bottom: -20, fontFamily: 'monospace', fontWeight: 'bold' }}>S/ SENSOR</Text>
                                  )}
 
                                  {/* Rep counter discreto */}
-                                 {isRunning && kinematics.repCount > 0 && (
+                                 {isRunning && trs.repCount > 0 && (
                                     <View style={{ position: 'absolute', top: -8, right: -8, backgroundColor: getEffortColor(), borderRadius: 12, paddingHorizontal: 7, paddingVertical: 2 }}>
-                                       <Text style={{ color: '#fff', fontSize: 11, fontWeight: '900' }}>{kinematics.repCount} rep</Text>
+                                       <Text style={{ color: '#fff', fontSize: 11, fontWeight: '900' }}>{trs.repCount} rep</Text>
                                     </View>
                                  )}
                               </Animated.View>
@@ -539,29 +623,29 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
                                <View style={{ backgroundColor: "#0a0a0a", borderWidth: 1, borderColor: "#1a1a2e", borderRadius: 8, padding: 10, marginTop: 8, marginBottom: 0 }}>
                                   {/* Linha 1: Status e source */}
                                   <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                                     <Text style={{ color: kinematics.debug.sensorStatus === "EVENTS_OK" ? "#4ade80" : kinematics.debug.sensorStatus === "PARTIAL_DATA" ? "#ffd700" : "#ff4757", fontSize: 10, fontWeight: "900", fontFamily: "monospace", letterSpacing: 1 }}>
-                                        {kinematics.debug.sensorStatus}
+                                     <Text style={{ color: trs.sensorStatus === "EVENTS_OK" ? "#4ade80" : trs.sensorStatus === "PARTIAL_DATA" ? "#ffd700" : "#ff4757", fontSize: 10, fontWeight: "900", fontFamily: "monospace", letterSpacing: 1 }}>
+                                        {trs.sensorStatus}
                                      </Text>
                                      <Text style={{ color: "#666", fontSize: 10, fontFamily: "monospace" }}>
-                                        src:{kinematics.source} evt:{kinematics.debug.motionEventCount} int:{kinematics.debug.motionIntervalMs}ms
+                                        src:{trs.source} evt:{trs.motionEventCount} int:{trs.motionIntervalMs}ms
                                      </Text>
                                   </View>
                                   {/* Linha 2: Permissoes */}
                                   <View style={{ flexDirection: "row", gap: 12, marginBottom: 6 }}>
-                                     <Text style={{ color: kinematics.debug.motionPermission === "granted" || kinematics.debug.motionPermission === "not_required" ? "#4ade80" : kinematics.debug.motionPermission === "denied" ? "#ff4757" : "#888", fontSize: 9, fontFamily: "monospace" }}>
-                                        motion:{kinematics.debug.motionPermission}
+                                     <Text style={{ color: trs.motionPermission === "granted" || trs.motionPermission === "not_required" ? "#4ade80" : trs.motionPermission === "denied" ? "#ff4757" : "#888", fontSize: 9, fontFamily: "monospace" }}>
+                                        motion:{trs.motionPermission}
                                      </Text>
-                                     <Text style={{ color: kinematics.debug.orientationPermission === "granted" || kinematics.debug.orientationPermission === "not_required" ? "#4ade80" : kinematics.debug.orientationPermission === "denied" ? "#ff4757" : "#888", fontSize: 9, fontFamily: "monospace" }}>
-                                        orient:{kinematics.debug.orientationPermission}
+                                     <Text style={{ color: trs.orientationPermission === "granted" || trs.orientationPermission === "not_required" ? "#4ade80" : trs.orientationPermission === "denied" ? "#ff4757" : "#888", fontSize: 9, fontFamily: "monospace" }}>
+                                        orient:{trs.orientationPermission}
                                      </Text>
                                   </View>
                                   {/* Linha 3: Flags de presenca */}
                                   <View style={{ flexDirection: "row", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
                                      {[
-                                        ["AIG", kinematics.debug.hasAccelerationIncludingGravity],
-                                        ["ACC", kinematics.debug.hasAcceleration],
-                                        ["RR",  kinematics.debug.hasRotationRate],
-                                        ["ORI", kinematics.debug.hasOrientation],
+                                        ["AIG", trs.hasAIG],
+                                        ["ACC", trs.hasACC],
+                                        ["RR",  trs.hasRR],
+                                        ["ORI", trs.hasOri],
                                      ].map(([label, val]) => (
                                         <Text key={String(label)} style={{ color: val ? "#4ade80" : "#ff4757", fontSize: 9, fontFamily: "monospace", backgroundColor: "#111", paddingHorizontal: 5, paddingVertical: 1, borderRadius: 3 }}>
                                            {String(label)}:{val ? "OK" : "NO"}
@@ -570,23 +654,23 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
                                   </View>
                                   {/* Linha 4: accelerationIncludingGravity */}
                                   <Text style={{ color: "#888", fontSize: 9, fontFamily: "monospace", marginBottom: 2 }}>
-                                     AIG  x:{kinematics.debug.aigX?.toFixed(2) ?? "null"}  y:{kinematics.debug.aigY?.toFixed(2) ?? "null"}  z:{kinematics.debug.aigZ?.toFixed(2) ?? "null"}
+                                     AIG  x:{trs.aigX?.toFixed(2) ?? "null"}  y:{trs.aigY?.toFixed(2) ?? "null"}  z:{trs.aigZ?.toFixed(2) ?? "null"}
                                   </Text>
                                   {/* Linha 5: acceleration */}
                                   <Text style={{ color: "#888", fontSize: 9, fontFamily: "monospace", marginBottom: 2 }}>
-                                     ACC  x:{kinematics.debug.accX?.toFixed(2) ?? "null"}  y:{kinematics.debug.accY?.toFixed(2) ?? "null"}  z:{kinematics.debug.accZ?.toFixed(2) ?? "null"}
+                                     ACC  x:{trs.accX?.toFixed(2) ?? "null"}  y:{trs.accY?.toFixed(2) ?? "null"}  z:{trs.accZ?.toFixed(2) ?? "null"}
                                   </Text>
                                   {/* Linha 6: orientation */}
                                   <Text style={{ color: "#666", fontSize: 9, fontFamily: "monospace", marginBottom: 6 }}>
-                                     ORI  a:{kinematics.debug.oriAlpha?.toFixed(1) ?? "null"}  b:{kinematics.debug.oriBeta?.toFixed(1) ?? "null"}  g:{kinematics.debug.oriGamma?.toFixed(1) ?? "null"}
+                                     ORI  a:{trs.oriAlpha?.toFixed(1) ?? "null"}  b:{trs.oriBeta?.toFixed(1) ?? "null"}  g:{trs.oriGamma?.toFixed(1) ?? "null"}
                                   </Text>
                                   {/* Linha 7: Pipeline */}
                                   <View style={{ borderTopWidth: 1, borderTopColor: "#1a1a2e", paddingTop: 6 }}>
                                      <Text style={{ color: "#888", fontSize: 9, fontFamily: "monospace", marginBottom: 2 }}>
-                                        phase:{kinematics.debug.currentPhase}  score:{kinematics.debug.currentScore.toFixed(2)}  reps:{kinematics.debug.repCount}
+                                        phase:{trs.currentPhase}→{trs.phaseLabel}  score:{trs.score.toFixed(2)}  reps:{trs.repCount}({trs.currentRepsInSet}/{trs.targetRepsPerSet})
                                      </Text>
-                                     <Text style={{ color: kinematics.debug.rejectionReason === "—" ? "#555" : "#ffd700", fontSize: 9, fontFamily: "monospace" }}>
-                                        reject: {kinematics.debug.rejectionReason}
+                                     <Text style={{ color: trs.rejectionReason === "—" ? "#555" : "#ffd700", fontSize: 9, fontFamily: "monospace" }}>
+                                        reject: {trs.rejectionReason}
                                      </Text>
                                   </View>
                                </View>

@@ -38,9 +38,7 @@ export interface SensorDebugSnapshot {
   hasOrientation: boolean;
   // Pipeline
   currentPhase: RepPhase;
-  currentAmplitude: number;
   currentScore: number;
-  idleState: boolean;
   repCount: number;
   rejectionReason: string;
   // Permissões
@@ -134,9 +132,7 @@ const DEFAULT_DEBUG: SensorDebugSnapshot = {
   hasRotationRate: false,
   hasOrientation: false,
   currentPhase: 'idle',
-  currentAmplitude: 0,
   currentScore: 0,
-  idleState: true,
   repCount: 0,
   rejectionReason: '—',
   motionPermission: 'unknown',
@@ -157,6 +153,7 @@ export const useMotionKinematicsFacade = (active: boolean = true): KinematicStat
     celebrationTrigger: false,
     referenceROM: null,
     lastRepResult: null,
+    rejectionReason: '—',
   });
   const [source, setSource]   = useState<KinematicsSource>('inactive');
   const [debug, setDebug]     = useState<SensorDebugSnapshot>(DEFAULT_DEBUG);
@@ -240,24 +237,37 @@ export const useMotionKinematicsFacade = (active: boolean = true): KinematicStat
         hasAcceleration: hasAcc,
         hasAccelerationIncludingGravity: hasAIG,
         hasRotationRate: hasRR,
-        currentPhase: engineRef.current ? 'idle' : 'idle',
-        repCount: engineState.repCount,
-        rejectionReason: lastRejectionRef.current,
+        repCount: debugRef.current.repCount,
+        rejectionReason: debugRef.current.rejectionReason,
       };
       flushDebug();
 
       // ── Pipeline: escolher fonte de dados ────────────────────────────────
-      // Prioridade: acceleration > accelerationIncludingGravity (fallback)
+      // PRIORIDADE: AIG > ACC  (invertida relativamente ao draft inicial)
+      //
+      // Razão física para supino:
+      //  • ACC (linear acceleration sem gravidade): ~0 durante descida/subida
+      //    a velocidade constante — apenas espica em arranque/travagem.
+      //    Não representa a trajectória do arco de movimento contínuo.
+      //  • AIG (accelerationIncludingGravity): inclui sempre o vector de
+      //    gravidade (~9.81). Quando o braço roda no arco do supino, o
+      //    componente de gravidade projectado em Y varia continuamente —
+      //    comporta-se como inclinómetro implícito e dá sinal robusto
+      //    mesmo em movimentos lentos e controlados.
+      // O motor subtrai GRAVITY via magnitude vs GRAVITY, pelo que AIG
+      // produz amplitudeDelta válido para detecção de fase e ROM.
+      // ACC é útil para lateralNoise (X/Z variance) e impulsos — mantido
+      // como fallback para dispositivos que não expõem AIG.
       let useX: number | null = null;
       let useY: number | null = null;
       let useZ: number | null = null;
 
-      if (hasAcc) {
-        useX = acc!.x; useY = acc!.y; useZ = acc!.z;
-      } else if (hasAIG) {
-        // Fallback: accelerationIncludingGravity (inclui gravidade ~9.81 no eixo)
-        // O engine já subtrai a gravidade via magnitude vs GRAVITY
+      if (hasAIG) {
+        // PRIMARY: accelerationIncludingGravity — sinal contínuo de orientação
         useX = aig!.x; useY = aig!.y; useZ = aig!.z;
+      } else if (hasAcc) {
+        // FALLBACK: acceleration pura — impulsos e dispositivos sem AIG
+        useX = acc!.x; useY = acc!.y; useZ = acc!.z;
       }
 
       if (useX !== null && useY !== null) {
@@ -275,16 +285,16 @@ export const useMotionKinematicsFacade = (active: boolean = true): KinematicStat
           timestamp: now,
         });
 
-        // Actualizar amplitude e fase no debug
+        // Actualizar fase no debug
         debugRef.current.currentPhase = newState.currentPhase;
         debugRef.current.currentScore = newState.executionQualityScore;
-        debugRef.current.idleState    = newState.currentPhase === 'idle';
         debugRef.current.repCount     = newState.repCount;
+        debugRef.current.rejectionReason = newState.rejectionReason;
 
         setEngineState({ ...newState });
       } else {
-        // Evento chegou mas sem dados utilizáveis
-        lastRejectionRef.current = 'acc null/undefined — evento sem dados';
+        // Evento chegou mas sem dados utilizáveis (nem AIG nem ACC com valores não-null)
+        lastRejectionRef.current = 'aig e acc null/undefined — evento sem dados úteis';
         debugRef.current.rejectionReason = lastRejectionRef.current;
         debugRef.current.sensorStatus = 'PARTIAL_DATA';
         flushDebug();
@@ -498,6 +508,7 @@ export const useMotionKinematicsFacade = (active: boolean = true): KinematicStat
     executionQualityScore: engineState.executionQualityScore,
     celebrationTrigger:  engineState.celebrationTrigger,
     repCount:            engineState.repCount,
+    rejectionReason:     engineState.rejectionReason,
     referenceROM:        engineState.referenceROM,
     isSimulated:         source === 'simulated_dev',
     isAvailable:         source === 'real_sensor' || source === 'simulated_dev',

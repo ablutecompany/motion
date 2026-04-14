@@ -1,5 +1,5 @@
 /**
- * repQualityEngine.ts
+ * repQualityEngine.ts — RC1.4
  *
  * Motor central de qualidade de execução do conta-movimento.
  * Garante que apenas movimento físico real e plausível conta como repetição.
@@ -8,6 +8,11 @@
  *
  * Pipeline:
  *   rawMotion  →  RepPhaseDetector  →  ExecutionQualityScorer  →  VisualGaugeMapper
+ *
+ * RC1.4 — Adaptação para AIG (accelerationIncludingGravity) como sinal primário:
+ *   - Entrada em fase por COERÊNCIA DIRECIONAL (não só por spike de amplitude)
+ *   - Amplitude medida como range de smoothY (não só delta de magnitude)
+ *   - Thresholds de entrada em fase separados do threshold de aceitação de rep
  */
 
 // ---------------------------------------------------------------------------
@@ -46,6 +51,7 @@ export interface QualityEngineState {
   celebrationTrigger: boolean;
   referenceROM: number | null; // calibrado na 1ª rep válida
   lastRepResult: RepResult | null;
+  rejectionReason: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -54,38 +60,58 @@ export interface QualityEngineState {
 
 const GRAVITY = 9.81;
 
-// Limiar mínimo para sair de idle — elevado para evitar ruído de sensor.
-// 2.8 m/s² ≈ 28% de 1G extra: exige movimento intencional, não vibração ou mesa.
+// Limiar de spike instantâneo para sair de idle (caminho rápido — ACC/AIG brusco)
+// 2.8 m/s² ≈ 28% de 1G extra: exige movimento intencional, não vibração de mesa.
 const IDLE_THRESHOLD = 2.8;
 
-// Limiar de mudança de fase — mais exigente.
-const PHASE_CHANGE_THRESHOLD = 1.5;
+// Threshold de entrada em fase dentro da rep (mais permissivo que IDLE_THRESHOLD).
+// Separado para não obrigar a spike alto em cada transição bottom→concen.
+const PHASE_ENTRY_THRESHOLD = 0.8; // m/s²
 
-// Amplitude mínima para que uma rep seja aceite.
-// Menos de 2.5 m/s² de pico = não foi movimento real de exercício.
-const MIN_ACCEPTED_AMPLITUDE = 2.5;
+// ── Coerência direcional (caminho suave para sair de idle) ─────────────────
+// Se |smoothY| > DIRECTION_THRESHOLD por COHERENT_ENTRY_SAMPLES amostras
+// consecutivas, entra em fase mesmo sem spike de magnitude.
+// Captura reps controladas com AIG onde delta ≈ 0 mas smoothY varia.
+const DIRECTION_THRESHOLD = 0.9;      // unidades de AIG (m/s²)
+const COHERENT_ENTRY_SAMPLES = 6;     // amostras (~120ms a 50Hz, ~180ms a 33Hz)
 
-// Score mínimo de qualidade para contabilizar a rep (noise gate).
-// 0.30 garante que rep precisa de pelo menos 1 característica técnica positiva.
-// Com base 0.50 - fases_incompletas 0.15 = 0.35 → passa (admitido com fases)
-// Com base 0.50 - fases_incompletas 0.15 - cadência_caótica 0.25 = 0.10 → bloqueado
-// Sem 0.30: fases incompletas ISOLADAS passavam com 0.35; com 0.30 continuam a passar MAS
-// cadência má reduz para 0.25 → bloqueado ✓
-// Elevado de 0.15 → 0.30 após validação funcional (2026-04-10)
+// Amplitude mínima de smoothY range para considerar que houve arco real de movimento.
+// 1.5 corresponds roughly to the Y-component changing 1.5 m/s² over the arc —
+// significativamente menor que IDLE_THRESHOLD pois AIG cobre mais sinal direcional.
+const MIN_SMOOTH_Y_RANGE = 1.5;       // m/s² de range de smoothY
+
+// Limiares de Y suavizado para transições de fase (AIG: Y indica inclinação do braço)
+const BOTTOM_ENTRY_Y  =  0.8;  // eccen→bottom: braço chegou ao fundo
+const CONCEN_TOP_Y    =  0.8;  // concen→top:   Y volta a baixar após subida
+
+// Amplitude mínima para que uma rep seja aceite (validação final).
+// Usando max(peakDelta, smoothYRange) — funciona com ACC e AIG.
+const MIN_ACCEPTED_AMPLITUDE = 1.5;   // m/s² (reduzido de 2.5; range de Y é diferente de delta)
+
+// Score mínimo de qualidade para contabilizar a rep.
 const MIN_QUALITY_FOR_COUNT = 0.30;
 
 // Duração mínima de uma fase para ser válida (ms)
-const MIN_PHASE_DURATION_MS = 350;
+const MIN_PHASE_DURATION_MS = 300;    // reduzido de 350 para reps mais naturais
 
-// Duração máxima de uma fase — após este tempo, RESET para idle (não avança rep)
+// Duração máxima de uma fase — após este tempo, RESET para idle
 const MAX_PHASE_DURATION_MS = 7000;
 
-// Cadência ótima por fase (ms): entre 700ms e 3000ms
-const CADENCE_MIN_MS = 700;
-const CADENCE_MAX_MS = 3000;
+// Tempo mínimo em idle antes de permitir nova entrada por coerência direcional.
+const IDLE_REARM_MS = 600;
+
+// Requisitos de Pose de Prontidão (Ready-Pose) — RC1.7
+const READY_POSE_STABILITY_MS = 600; // Estabilidade necessária antes de armar
+const READY_ORIENTATION_LIMIT = 5.0; // Desvio máximo lateral (X/Z) para ser considerado supino
+const POSTURE_SHIFT_LIMIT     = 6.5; // Limite de desvio global que anula a rep
+
+
+// Cadência ótima por fase (ms): entre 600ms e 3500ms (ligeiramente mais tolerante)
+const CADENCE_MIN_MS = 600;
+const CADENCE_MAX_MS = 3500;
 
 // Limiar de ruído lateral (std dev de X/Z normalizado)
-const NOISE_HIGH_THRESHOLD = 0.35;
+const NOISE_HIGH_THRESHOLD   = 0.35;
 const NOISE_MEDIUM_THRESHOLD = 0.15;
 
 // Score mínimo para microcelebração
@@ -96,8 +122,8 @@ const WEIGHT_QUALITY = 0.82;
 const WEIGHT_RAW     = 0.18;
 
 // Cap visual por condição degradada
-const CAP_CHAOTIC_CADENCE  = 0.50;
-const CAP_INSUFFICIENT_AMP = 0.45;
+const CAP_CHAOTIC_CADENCE   = 0.50;
+const CAP_INSUFFICIENT_AMP  = 0.45;
 const CAP_INCOMPLETE_PHASES = 0.35;
 
 // ---------------------------------------------------------------------------
@@ -120,17 +146,27 @@ function lateralNoise(samples: RawSample[]): number {
 }
 
 // ---------------------------------------------------------------------------
-// REP PHASE DETECTOR
+// REP PHASE DETECTOR — RC1.4
 // ---------------------------------------------------------------------------
 
 /**
  * Máquina de estados para deteção de fases de repetição.
- * Optimizado para supino reto (eixo Y = vertical quando tlm no braço).
+ * Optimizado para supino reto + AIG (accelerationIncludingGravity) como fonte primária.
  *
- * REGRA DE SEGURANÇA:
- * - Nenhuma fase avança automaticamente por tempo (sem timer-based transitions)
- * - Timeouts resetam para idle, NUNCA avançam a rep
- * - Uma rep só é concluída se houver amplitude física suficiente
+ * MODELO DE SINAL (AIG):
+ *  magnitude(AIG) ≈ 9.81 durante movimento lento → delta ≈ 0.
+ *  A informação de trajectória real está em smoothY:
+ *    smoothY < −DIRECTION_THRESHOLD → braço em descida (eccen)
+ *    smoothY > +BOTTOM_ENTRY_Y     → braço no fundo (bottom)
+ *    smoothY < −CONCEN_TOP_Y       → braço no topo (lockout)
+ *
+ * DUPLO CAMINHO DE ENTRADA EM IDLE:
+ *  1. Spike (ACC/AIG brusco): delta > IDLE_THRESHOLD → entrada imediata
+ *  2. Coerência direcional (AIG suave): |smoothY| > DIRECTION_THRESHOLD
+ *     por COHERENT_ENTRY_SAMPLES amostras consecutivas → entrada gradual
+ *
+ * AMPLITUDE:
+ *  max(peakDelta, smoothYRange) — funciona com ACC (delta real) e AIG (Y range).
  */
 export class RepPhaseDetector {
   private phase: RepPhase = 'idle';
@@ -138,20 +174,43 @@ export class RepPhaseDetector {
   private phaseBuffer: RawSample[] = [];
   private phaseTimings: Partial<Record<RepPhase, number>> = {};
 
-  // Histórico de aceleração vertical suavizado (alpha baixo = mais lento, mais estável)
+  // EMA de Y — alpha 0.18 (ligeiramente mais rápido que 0.15 para AIG)
   private smoothY = 0;
-  private readonly alpha = 0.15;
+  private readonly alpha = 0.18;
 
-  // Amplitude real detetada na fase excêntrica
+  // Amplitude via deviation de magnitude (compatível com ACC)
   private peakDelta = 0;
-  private sessionStarted = false;
+
+  // Amplitude via range de smoothY (fiável com AIG em movimento lento)
+  private smoothYMin =  Infinity;
+  private smoothYMax = -Infinity;
+
+  // Estado de coerência direcional para entrada suave em idle
+  private directionCount = 0;
+  private directionSign  = 0; // -1 = descida, +1 = subida
+  private idleBaselineY  = NaN;
+
+  // Estado de Armamento (RC1.7)
+  private isArmed = false;
+  private readyPoseStartTime = 0;
+  private rejectionReason = '—';
 
   reset() {
-    this.phase = 'idle';
+    this.phase          = 'idle';
     this.phaseStartTime = 0;
-    this.phaseBuffer = [];
-    this.phaseTimings = {};
-    this.peakDelta = 0;
+    this.phaseBuffer    = [];
+    this.phaseTimings   = {};
+    this.peakDelta      = 0;
+    this.smoothYMin     =  Infinity;
+    this.smoothYMax     = -Infinity;
+    this.directionCount = 0;
+    this.directionSign  = 0;
+    // RC1.5/RC1.6: reseta as médias
+    this.smoothY        = 0;
+    this.idleBaselineY  = NaN;
+    this.isArmed        = false;
+    this.readyPoseStartTime = 0;
+    this.rejectionReason = '—';
   }
 
   processSample(sample: RawSample): {
@@ -160,8 +219,9 @@ export class RepPhaseDetector {
     amplitudeDelta: number;
     repCompleted: boolean;
     phaseSamples: RawSample[];
+    rejectionReason: string;
   } | null {
-    const mag = magnitude(sample.x, sample.y, sample.z);
+    const mag   = magnitude(sample.x, sample.y, sample.z);
     const delta = Math.abs(mag - GRAVITY);
     this.smoothY = this.smoothY * (1 - this.alpha) + sample.y * this.alpha;
 
@@ -176,119 +236,187 @@ export class RepPhaseDetector {
     let repCompleted = false;
 
     switch (this.phase) {
+
       case 'idle': {
-        // Exige delta ELEVADO para sair de idle — ruído e vibração de mesa não ativam
-        if (delta > IDLE_THRESHOLD && phaseDuration > 150) {
-          // Determinar direção: Y negativo = descida (eccen), Y positivo = subida (concen)
-          newPhase = this.smoothY < -1.0 ? 'eccen' : 'concen';
+        const hasSpike = delta > IDLE_THRESHOLD;
+
+        // RC1.7: Monitorização de Ready-Pose (Estabilidade + Orientação)
+        // No supino, o telemóvel está horizontal. X e Z devem ser baixos.
+        const lateralDev = Math.max(Math.abs(sample.x), Math.abs(sample.z));
+        const isStable   = delta < 1.0; // Movimento quase nulo
+        const isCorrectOrientation = lateralDev < READY_ORIENTATION_LIMIT;
+
+        if (isStable && isCorrectOrientation) {
+          if (this.readyPoseStartTime === 0) this.readyPoseStartTime = now;
+          if (now - this.readyPoseStartTime > READY_POSE_STABILITY_MS) {
+            this.isArmed = true;
+            this.rejectionReason = '—';
+          }
+        } else {
+          this.readyPoseStartTime = 0;
+          this.isArmed = false;
+          if (!isCorrectOrientation) this.rejectionReason = 'not_ready_pose';
+          else if (!isStable) this.rejectionReason = 'wait_stability';
+        }
+
+        // EMA Baseline
+        if (Number.isNaN(this.idleBaselineY)) {
+          this.idleBaselineY = sample.y;
+        } else {
+          this.idleBaselineY = this.idleBaselineY * 0.98 + sample.y * 0.02;
+        }
+
+        // Deteção de Movimento
+        const diffFromRest = Math.abs(this.smoothY - this.idleBaselineY);
+        if (diffFromRest > 0.8) {
+          this.directionCount++;
+        } else {
+          this.directionCount = 0;
+        }
+        
+        const hasSustainedDirection = this.directionCount >= COHERENT_ENTRY_SAMPLES;
+        const idleReady = phaseDuration > (hasSpike ? 150 : IDLE_REARM_MS);
+
+        if ((hasSpike || hasSustainedDirection) && idleReady) {
+          if (!this.isArmed) {
+             // Tenta entrar mas não está armado (ex: agitação repentina)
+             this.rejectionReason = 'not_armed_setup';
+             this.reset();
+             break;
+          }
+          newPhase = 'eccen';
+          this.directionCount = 0;
+          this.directionSign  = 0;
+          this.smoothYMin = this.smoothY;
+          this.smoothYMax = this.smoothY;
+          this.peakDelta  = delta;
         }
         break;
       }
 
       case 'eccen': {
-        // Manter registo de pico de amplitude
-        this.peakDelta = Math.max(this.peakDelta, delta);
+        // RC1.7: Rejeição por Postura Global
+        const lateralDev = Math.max(Math.abs(sample.x), Math.abs(sample.z));
+        if (lateralDev > POSTURE_SHIFT_LIMIT) {
+          this.rejectionReason = 'global_posture_shift';
+          this.reset();
+          break;
+        }
 
-        // Inversão de Y (de negativo para positivo) = chegou ao fundo
-        if (this.smoothY > 0.8 && phaseDuration > MIN_PHASE_DURATION_MS) {
+        this.peakDelta  = Math.max(this.peakDelta, delta);
+        this.smoothYMin = Math.min(this.smoothYMin, this.smoothY);
+        this.smoothYMax = Math.max(this.smoothYMax, this.smoothY);
+
+        // Inversão de Y (de negativo → positivo) = braço chegou ao fundo
+        if (this.smoothY > BOTTOM_ENTRY_Y && phaseDuration > MIN_PHASE_DURATION_MS) {
           newPhase = 'bottom';
         }
-
-        // TIMEOUT: não avança rep, reseta para idle
-        if (phaseDuration > MAX_PHASE_DURATION_MS) {
-          this.reset();
-        }
+        if (phaseDuration > MAX_PHASE_DURATION_MS) { this.reset(); }
         break;
       }
 
       case 'bottom': {
-        // Fundo: aguarda movimento para subir
-        // EXIGE delta > PHASE_CHANGE_THRESHOLD — não avança por timer
-        if (delta > PHASE_CHANGE_THRESHOLD && phaseDuration > MIN_PHASE_DURATION_MS) {
-          // Só avança se há amplitude real acumulada
-          if (this.peakDelta >= MIN_ACCEPTED_AMPLITUDE * 0.7) {
+        this.smoothYMin = Math.min(this.smoothYMin, this.smoothY);
+        this.smoothYMax = Math.max(this.smoothYMax, this.smoothY);
+
+        // Validar que houve arco real até aqui (por range de Y ou spike)
+        const smoothYRange = this.smoothYMax - this.smoothYMin;
+        const hasRealArc   = smoothYRange >= MIN_SMOOTH_Y_RANGE || this.peakDelta >= PHASE_ENTRY_THRESHOLD;
+
+        if (hasRealArc && phaseDuration > MIN_PHASE_DURATION_MS) {
+          // Qualquer spike leve OU movimento Y de retorno = início da subida
+          if (delta > PHASE_ENTRY_THRESHOLD || (this.smoothY - this.smoothYMin) > 0.4) {
             newPhase = 'concen';
           }
         }
-
-        // TIMEOUT: reseta para idle, NÃO completa rep
-        if (phaseDuration > MAX_PHASE_DURATION_MS) {
-          this.reset();
-        }
+        if (phaseDuration > MAX_PHASE_DURATION_MS) { this.reset(); }
         break;
       }
 
       case 'concen': {
-        // Fase concêntrica: Y volta a descer = chegou ao topo
-        if (this.smoothY < -0.8 && phaseDuration > MIN_PHASE_DURATION_MS) {
-          newPhase = 'top';
+        // RC1.7: Posture rejection na subida
+        const lateralDev = Math.max(Math.abs(sample.x), Math.abs(sample.z));
+        if (lateralDev > POSTURE_SHIFT_LIMIT) {
+          this.rejectionReason = 'global_posture_shift';
+          this.reset();
+          break;
         }
 
-        // TIMEOUT: reseta para idle
-        if (phaseDuration > MAX_PHASE_DURATION_MS) {
-          this.reset();
+        this.smoothYMax = Math.max(this.smoothYMax, this.smoothY);
+
+        // Y volta a descer abaixo de limiar = chegou ao topo/lockout
+        if (this.smoothY < -CONCEN_TOP_Y && phaseDuration > MIN_PHASE_DURATION_MS) {
+          newPhase = 'top';
         }
+        if (phaseDuration > MAX_PHASE_DURATION_MS) { this.reset(); }
         break;
       }
 
       case 'top': {
-        // Topo/lockout: validar se houve movimento real suficiente
         if (phaseDuration > MIN_PHASE_DURATION_MS) {
-          const amp = this.peakDelta;
+          // Amplitude = máximo entre as duas métricas
+          const smoothYRange = this.smoothYMax - this.smoothYMin;
+          const amp          = Math.max(this.peakDelta, smoothYRange);
 
           if (amp >= MIN_ACCEPTED_AMPLITUDE) {
-            // Rep física real aceite — retornar resultado
-            const samples = [...this.phaseBuffer];
-            const timings = { ...this.phaseTimings };
-
-            const nextPhase: RepPhase = delta < IDLE_THRESHOLD ? 'idle' : 'eccen';
+            // Rep física real aceite
+            const samples   = [...this.phaseBuffer];
+            const timings   = { ...this.phaseTimings };
+            
+            // RC1.6: ANTI-CAOS LATCH
+            // Força o sistema a voltar a IDLE após aceitar a repetição. 
+            // Uma série de oscilações rápidas (abanões) não consegue ciclar
+            // eccen->bottom->concen->top instantaneamente sem passar por IDLE
+            // e cumprir obrigatoriamente os IDLE_REARM_MS (400ms) de cooldown.
+            const nextPhase: RepPhase = 'idle';
             repCompleted = true;
 
-            this.peakDelta = 0;
-            this.phaseTimings = {};
+            // RC1.5/RC1.6: reset COMPLETO de todo o estado transitório
+            this.smoothY        = 0;
+            this.idleBaselineY  = NaN;
+            this.directionCount = 0;
+            this.directionSign  = 0;
+            this.peakDelta      = 0;
+            this.smoothYMin     =  Infinity;
+            this.smoothYMax     = -Infinity;
+            this.phaseTimings   = {};
             this.phaseStartTime = now;
-            this.phase = nextPhase;
-            this.phaseBuffer = [];
+            this.phase          = nextPhase;
+            this.phaseBuffer    = [];
 
             return {
               newPhase: nextPhase,
               phaseTimings: timings,
               amplitudeDelta: amp,
               repCompleted,
-              phaseSamples: samples
+              phaseSamples: samples,
+              rejectionReason: this.rejectionReason
             };
           } else {
-            // Amplitude insuficiente para ser rep real — reset silencioso
+            // Arco insuficiente — reset silencioso
             this.reset();
           }
         }
-
-        // TIMEOUT: reseta
-        if (phaseDuration > MAX_PHASE_DURATION_MS) {
-          this.reset();
-        }
+        if (phaseDuration > MAX_PHASE_DURATION_MS) { this.reset(); }
         break;
       }
     }
 
     if (newPhase !== null && newPhase !== this.phase) {
       this.phaseTimings[this.phase] = phaseDuration;
-      const prevSamples = [...this.phaseBuffer];
-      this.phaseBuffer = [];
-
-      this.phase = newPhase;
       this.phaseStartTime = now;
-
-      return {
-        newPhase,
-        phaseTimings: { ...this.phaseTimings },
-        amplitudeDelta: this.peakDelta,
-        repCompleted: false,
-        phaseSamples: prevSamples
-      };
+      this.phase          = newPhase;
+      this.phaseBuffer    = []; // Clear buffer for new phase
     }
 
-    return null;
+    return {
+      newPhase: this.phase,
+      phaseTimings: this.phaseTimings,
+      amplitudeDelta: Math.max(this.peakDelta, this.smoothYMax - this.smoothYMin),
+      repCompleted,
+      phaseSamples: this.phaseBuffer,
+      rejectionReason: this.rejectionReason,
+    };
   }
 
   getCurrentPhase(): RepPhase {
@@ -456,9 +584,10 @@ export class RepQualityEngine {
     celebrationTrigger: false,
     referenceROM: null,
     lastRepResult: null,
+    rejectionReason: '—',
   };
 
-  private celebrationTs   = 0;
+  private celebrationTs    = 0;
   private lastQualityScore = 0;
   private phaseProgressMap: Record<RepPhase, number> = {
     idle: 0, eccen: 0.15, bottom: 0.50, concen: 0.70, top: 0.95
@@ -468,8 +597,9 @@ export class RepQualityEngine {
     const result = this.phaseDetector.processSample(sample);
 
     if (result !== null) {
-      const { newPhase, phaseTimings, amplitudeDelta, repCompleted, phaseSamples } = result;
+      const { newPhase, phaseTimings, amplitudeDelta, repCompleted, phaseSamples, rejectionReason } = result;
       this.state.currentPhase = newPhase;
+      this.state.rejectionReason = rejectionReason;
 
       if (repCompleted) {
         this.scorer.calibrateIfValid(amplitudeDelta);
@@ -480,8 +610,7 @@ export class RepQualityEngine {
         this.state.referenceROM = this.scorer.getReferenceROM();
 
         // ── NOISE GATE: só conta se há movimento físico real suficiente ──
-        // amplitude física mínima E qualidade acima do limiar de ruído
-        const isRealMovement = amplitudeDelta >= MIN_ACCEPTED_AMPLITUDE;
+        const isRealMovement    = amplitudeDelta >= MIN_ACCEPTED_AMPLITUDE;
         const passesQualityGate = repResult.executionQualityScore >= MIN_QUALITY_FOR_COUNT;
 
         if (isRealMovement && passesQualityGate) {
@@ -493,7 +622,6 @@ export class RepQualityEngine {
             this.celebrationTs = sample.timestamp;
           }
         }
-        // Movimento insuficiente ou ruído: repCount NÃO incrementa, gauge não celebra
       }
     }
 
@@ -501,12 +629,12 @@ export class RepQualityEngine {
       this.state.celebrationTrigger = false;
     }
 
-    const phaseBase = this.phaseProgressMap[this.state.currentPhase] ?? 0;
-    const phaseDuration = this.phaseDetector.getCurrentPhaseDuration(sample.timestamp);
+    const phaseBase        = this.phaseProgressMap[this.state.currentPhase] ?? 0;
+    const phaseDuration    = this.phaseDetector.getCurrentPhaseDuration(sample.timestamp);
     const phaseProgressBump = Math.min(0.2, phaseDuration / 3000 * 0.2);
     this.state.repProgress = Math.min(1, phaseBase + phaseProgressBump);
 
-    const mag    = magnitude(sample.x, sample.y, sample.z);
+    const mag     = magnitude(sample.x, sample.y, sample.z);
     const rawNorm = Math.min(1, Math.abs(mag - GRAVITY) / 12);
 
     this.state.visualGaugeProgress = this.gaugeMapper.compute(
@@ -532,6 +660,7 @@ export class RepQualityEngine {
       celebrationTrigger: false,
       referenceROM: null,
       lastRepResult: null,
+      rejectionReason: '—',
     };
   }
 }
