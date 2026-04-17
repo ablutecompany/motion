@@ -4,7 +4,7 @@ import { RepQualityEngine, RepPhase, QualityEngineState } from '../engines/repQu
 
 export type KinematicsSource = 'real_sensor' | 'simulated_dev' | 'unsupported' | 'permission_denied' | 'inactive';
 
-export type PermissionState = 'unknown' | 'granted' | 'denied' | 'not_required' | 'error';
+export type PermissionState = 'unknown' | 'granted' | 'denied' | 'not_required' | 'error' | 'secure_context_required';
 
 export type SensorStatus = 'NO_EVENTS' | 'EVENTS_OK' | 'PARTIAL_DATA';
 
@@ -54,6 +54,7 @@ export interface KinematicState {
   currentPhase: RepPhase;
   repProgress: number;
   executionQualityScore: number;
+  liveAmplitude: number;
   celebrationTrigger: boolean;
   repCount: number;
   referenceROM: number | null;
@@ -62,6 +63,12 @@ export interface KinematicState {
   source: KinematicsSource;
   // Debug
   debug: SensorDebugSnapshot;
+  
+  // Estado realístico
+  motionFeatureEnabled: boolean;
+  motionPermissionState: PermissionState;
+  motionRuntimeReady: boolean;
+
   // Ação de permissão — deve ser chamada de um gesto do utilizador
   requestSensorPermission: () => Promise<void>;
 }
@@ -149,6 +156,7 @@ export const useMotionKinematicsFacade = (active: boolean = true): KinematicStat
     repProgress: 0,
     visualGaugeProgress: 0,
     executionQualityScore: 0,
+    liveAmplitude: 0,
     repCount: 0,
     celebrationTrigger: false,
     referenceROM: null,
@@ -173,6 +181,7 @@ export const useMotionKinematicsFacade = (active: boolean = true): KinematicStat
 
   // ── Flush do debug para o estado React (throttled a 4 Hz) ────────────────
   const debugFlushRef = useRef<number>(0);
+  const engineFlushRef = useRef<number>(0);
   const flushDebug = () => {
     const now = Date.now();
     if (now - debugFlushRef.current > 250) {
@@ -291,7 +300,11 @@ export const useMotionKinematicsFacade = (active: boolean = true): KinematicStat
         debugRef.current.repCount     = newState.repCount;
         debugRef.current.rejectionReason = newState.rejectionReason;
 
-        setEngineState({ ...newState });
+        // RC1.7.1: Throttle engine set state to prevent UI tearing / rep alternations
+        if (now - engineFlushRef.current > 50) {
+           engineFlushRef.current = now;
+           setEngineState({ ...newState });
+        }
       } else {
         // Evento chegou mas sem dados utilizáveis (nem AIG nem ACC com valores não-null)
         lastRejectionRef.current = 'aig e acc null/undefined — evento sem dados úteis';
@@ -326,19 +339,33 @@ export const useMotionKinematicsFacade = (active: boolean = true): KinematicStat
     let motionPerm: PermissionState  = 'not_required';
     let orientPerm: PermissionState  = 'not_required';
 
+    const isSecure = window.isSecureContext === true;
+    const isLocalhost = window.location?.hostname === 'localhost' || window.location?.hostname === '127.0.0.1';
+
     // iOS 13+ requer requestPermission()
     const dme = (window as any).DeviceMotionEvent;
     const doe = (window as any).DeviceOrientationEvent;
 
-    if (dme && typeof dme.requestPermission === 'function') {
+    if (!isSecure && !isLocalhost && /iPhone|iPad|iPod/.test(navigator.userAgent)) {
+      motionPerm = 'secure_context_required';
+      orientPerm = 'secure_context_required';
+    } else if (dme && typeof dme.requestPermission === 'function') {
       try {
         const result = await dme.requestPermission();
         motionPerm = result === 'granted' ? 'granted' : 'denied';
-      } catch {
-        motionPerm = 'error';
+      } catch (err: any) {
+        if (err.name === 'NotAllowedError' || (err.message && err.message.toLowerCase().includes('secure'))) {
+           motionPerm = 'secure_context_required';
+        } else {
+           motionPerm = 'error';
+        }
       }
     } else if ('DeviceMotionEvent' in window) {
-      motionPerm = 'not_required'; // Android / desktop — não exige permissão explícita
+      if (!isSecure && !isLocalhost && Platform.OS === 'web') {
+         motionPerm = 'secure_context_required'; // Caso web geral não seguro com restrições modernas
+      } else {
+         motionPerm = 'not_required'; // Android / desktop — não exige permissão explícita
+      }
     } else {
       motionPerm = 'denied'; // browser sem suporte
     }
@@ -425,11 +452,21 @@ export const useMotionKinematicsFacade = (active: boolean = true): KinematicStat
         // iOS: NÃO ligar listeners automaticamente — aguardar botão "Ativar sensores"
         sourceRef.current = 'unsupported';
         setSource('unsupported');
+        // Initial secure context check on mount
+        const isSecure = window.isSecureContext === true;
+        let pState: PermissionState = 'unknown';
+        let rReason = 'iOS: toque em "Ativar sensores" para pedir permissão';
+        
+        if (!isSecure && !isLocalhost) {
+          pState = 'secure_context_required';
+          rReason = 'HTTPS em falta para ativar sensores num iPhone por LAN.';
+        }
+
         debugRef.current = {
           ...debugRef.current,
-          motionPermission: 'unknown',
+          motionPermission: pState,
           sensorStatus: 'NO_EVENTS',
-          rejectionReason: 'iOS: toque em "Ativar sensores" para pedir permissão',
+          rejectionReason: rReason,
         };
         setDebug({ ...debugRef.current });
       } else {
@@ -498,6 +535,11 @@ export const useMotionKinematicsFacade = (active: boolean = true): KinematicStat
     excellent: 'redline', good: 'high', partial: 'medium', idle: 'low',
   };
 
+  // ── Modelação Real de Estados
+  const motionFeatureEnabled = active;
+  const motionPermissionState = debug.motionPermission;
+  const motionRuntimeReady = motionFeatureEnabled && (motionPermissionState === 'granted' || motionPermissionState === 'not_required');
+
   return {
     visualGaugeProgress: engineState.visualGaugeProgress,
     effortValue:         engineState.visualGaugeProgress,
@@ -506,14 +548,18 @@ export const useMotionKinematicsFacade = (active: boolean = true): KinematicStat
     currentPhase:        engineState.currentPhase,
     repProgress:         engineState.repProgress,
     executionQualityScore: engineState.executionQualityScore,
+    liveAmplitude:       engineState.liveAmplitude,
     celebrationTrigger:  engineState.celebrationTrigger,
     repCount:            engineState.repCount,
     rejectionReason:     engineState.rejectionReason,
     referenceROM:        engineState.referenceROM,
     isSimulated:         source === 'simulated_dev',
-    isAvailable:         source === 'real_sensor' || source === 'simulated_dev',
+    isAvailable:         motionRuntimeReady && (source === 'real_sensor' || source === 'simulated_dev'),
     source,
     debug,
+    motionFeatureEnabled,
+    motionPermissionState,
+    motionRuntimeReady,
     requestSensorPermission,
   };
 };

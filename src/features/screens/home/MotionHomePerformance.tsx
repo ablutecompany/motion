@@ -10,6 +10,8 @@ import { useMotionKinematicsFacade } from '../../../facades/useMotionKinematicsF
 import { useMotionTrainingFacade } from '../../../facades/useMotionTrainingFacade';
 import { MotionBottomNav } from '../../components/MotionBottomNav';
 import { MotionProgressScreen } from '../MotionProgress';
+import { MotionPlanScreen } from './MotionPlanScreen';
+import { useMotionPlanState } from '../../../facades/useMotionPlanState';
 import type { RepPhase } from '../../../engines/repQualityEngine';
 import type { KinematicsSource, PermissionState, SensorStatus } from '../../../facades/useMotionKinematicsFacade';
 import { SensorDebugPanel } from '../../components/SensorDebugPanel';
@@ -55,6 +57,7 @@ export interface TrainingRenderState {
 export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
    const theme = useMotionTheme();
    const { width: winW } = useWindowDimensions();
+   const planState = useMotionPlanState();
    
    const isSm = winW < 380;
    const isLg = winW >= 420;
@@ -81,6 +84,29 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
    const [isInfoVisible, setIsInfoVisible] = useState(false);
    const [isFlowVisible, setIsFlowVisible] = useState(false);
    const [isWeightDialVisible, setIsWeightDialVisible] = useState(false);
+   const [isInstructionsVisible, setIsInstructionsVisible] = useState(false);
+   const [unlatchedCompleted, setUnlatchedCompleted] = useState(false);
+   const lastActiveBlockIdRef = useRef(planState?.activeBlock?.blockId);
+   
+   // Integração do Motor Dedutivo e Estado Real de Plano
+   const trainingEngine = useMotionTrainingFacade();
+   const engineState = trainingEngine.model;
+
+   const prevPlanStatusRef = useRef(engineState.planStatus);
+   
+   useEffect(() => {
+      if (planState?.activeBlock?.blockId && planState.activeBlock.blockId !== lastActiveBlockIdRef.current) {
+         setUnlatchedCompleted(true);
+         lastActiveBlockIdRef.current = planState.activeBlock.blockId;
+      }
+   }, [planState?.activeBlock?.blockId]);
+
+   useEffect(() => {
+      if (trainingEngine.model.planStatus === 'completed' && prevPlanStatusRef.current !== 'completed') {
+         setUnlatchedCompleted(false);
+      }
+      prevPlanStatusRef.current = trainingEngine.model.planStatus;
+   }, [trainingEngine.model.planStatus]);
    const [activeTab, setActiveTab] = useState('Treino');
    const [weightRecommended, setWeightRecommended] = useState(120);
    const weightRef = useRef(weightRecommended);
@@ -389,15 +415,14 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
       return '#ff2d00'; // vermelho forte
    };
 
-   // Integração do Motor Dedutivo de Plano de Treino
-   const trainingEngine = useMotionTrainingFacade();
-   const engineState = trainingEngine.model;
+   // Integração do Motor Dedutivo de Plano de Treino (Foi movido para o topo)
 
    // Resolução dos dados injetados na UI de forma totalmente reativa:
-   const exerciseName = engineState.currentExercise?.name || "Fora do Plano";
-   const exerciseGroup = engineState.currentExercise?.groupTarget || "Livre";
-   const exerciseDetails = engineState.currentExercise?.details || "";
-   const nextExerciseName = engineState.nextExercise?.name || "Fim Previsto";
+   const activeExerciseDef = planState?.activeExercise;
+   const exerciseName = activeExerciseDef?.name || engineState.currentExercise?.name || "Fora do Plano";
+   const exerciseGroup = activeExerciseDef?.groupTarget || engineState.currentExercise?.groupTarget || "Livre";
+   const exerciseDetails = activeExerciseDef?.details || engineState.currentExercise?.details || "";
+   const nextExerciseName = planState?.nextBlock ? (planState.catalog[planState.nextBlock.exerciseId]?.name || "Fim Previsto") : (engineState.nextExercise?.name || "Fim Previsto");
 
    // ── OBJETO Único DE RENDER (RC1.5) ─────────────────────────────────────
    // RC1.5: adicionados currentRepsInSet / completedSets / currentSet /
@@ -460,7 +485,7 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
                      </View>
                   )}
 
-                  {engineState.planStatus === 'completed' && (
+                  {engineState.planStatus === 'completed' && !unlatchedCompleted && (
                      <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 64 }}>
                         <View style={{ width: 100, height: 100, borderRadius: 50, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
                            <ClipboardList color={theme.colors.pageBg} size={48} />
@@ -474,14 +499,14 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
                                  <Text style={{ color: theme.colors.textMain, fontSize: 14, fontWeight: 'bold', letterSpacing: 1 }}>SESSÃO EXTRA</Text>
                               </TouchableOpacity>
                            )}
-                           <TouchableOpacity onPress={() => {}} style={{ padding: 18, borderRadius: 16, backgroundColor: 'transparent', alignItems: 'center' }}>
+                           <TouchableOpacity onPress={() => { setUnlatchedCompleted(true); trainingEngine.actions.finishSession(); }} style={{ padding: 18, borderRadius: 16, backgroundColor: 'transparent', alignItems: 'center' }}>
                               <Text style={{ color: theme.colors.textSecondary, fontSize: 14, fontWeight: 'bold' }}>TERMINAR AGORA</Text>
                            </TouchableOpacity>
                         </View>
                      </View>
                   )}
 
-                   {engineState.planStatus !== 'completed' && engineState.planStatus !== 'no_plan' && engineState.planStatus !== 'rest_day' && (
+                   {(engineState.planStatus !== 'completed' || unlatchedCompleted) && engineState.planStatus !== 'no_plan' && engineState.planStatus !== 'rest_day' && (
                         <View style={{ flex: 1, flexDirection: 'column' }}>
                            {/* === BANDA SUPERIOR === */}
                            <View style={{ flexShrink: 0 }}>
@@ -498,7 +523,9 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
                                     <View style={[styles.badge, { backgroundColor: theme.colors.primary + '20', borderLeftColor: theme.colors.primary, paddingVertical: 2, paddingHorizontal: 8 }]}>
                                        <Text style={[styles.badgeText, { color: theme.colors.primary, fontSize: 10 }]}>{exerciseGroup.toUpperCase()}</Text>
                                     </View>
-                                    <Text style={{ color: theme.colors.textSecondary, fontSize: 12, letterSpacing: 1, fontStyle: 'italic', opacity: 0.7 }}>instruções</Text>
+                                    <TouchableOpacity onPress={() => setIsInstructionsVisible(true)} hitSlop={{top: 15, bottom: 15, left: 15, right: 15}}>
+                                       <Text style={{ color: theme.colors.textSecondary, fontSize: 12, letterSpacing: 1, fontStyle: 'italic', opacity: 0.7 }}>instruções</Text>
+                                    </TouchableOpacity>
                                  </View>
                                  <View style={[styles.heroLayout, { marginTop: 12 }]}>
                                     <View style={{ flex: 1 }}>
@@ -853,6 +880,13 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
                </View>
             )}
 
+            {/* ---------------- PLANO TAB ---------------- */}
+            {activeTab === 'Plano' && (
+               <View style={{ flex: 1, paddingBottom: 64 }}>
+                  <MotionPlanScreen planState={planState} onNavigateToTraining={() => setActiveTab('Treino')} />
+               </View>
+            )}
+
             {/* ---------------- MǸTRICAS TAB ---------------- */}
             {activeTab === 'Métricas' && (
                <View style={{ flex: 1, paddingBottom: 64 }}>
@@ -865,6 +899,38 @@ export const MotionHomePerformance = ({ viewModel, onNavigate }: any) => {
 
          {/* COMPONENTE UNICO BOTTOM NAV FIXA */}
          <MotionBottomNav activeTab={activeTab} onTabPress={setActiveTab} />
+
+         {/* Popup de Informação: Modo de Precisão */}
+         {isInstructionsVisible && (
+            <View style={{ position: 'fixed' as any, top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(10,10,10,0.85)', zIndex: 9999, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+               <View style={{ width: '100%', backgroundColor: theme.colors.pageBg, borderRadius: 24, padding: 24, borderWidth: 1, borderColor: theme.colors.outline, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.2, shadowRadius: 20 }}>
+                  <Text style={{ color: theme.colors.textSecondary, fontSize: 11, fontWeight: '800', letterSpacing: 1, marginBottom: 8, textTransform: 'uppercase' }}>INSTRUÇÕES TÉCNICAS</Text>
+                  <Text style={{ color: theme.colors.textMain, fontSize: 22, fontWeight: '900', marginBottom: 24, letterSpacing: -0.5 }}>{planState?.activeExercise?.name || exerciseName}</Text>
+                  
+                  <View style={{ marginBottom: 20 }}>
+                     <Text style={{ color: theme.colors.textMain, fontSize: 13, fontWeight: '800', marginBottom: 6 }}>COMO EXECUTAR</Text>
+                     <Text style={{ color: theme.colors.textSecondary, fontSize: 15, lineHeight: 22 }}>{planState?.activeExercise?.howToPerform || 'Mantenha a postura estabilizada e controle a fase excêntrica garantindo a amplitude completa. Respire na fase descendente e expire no pico do esforço.'}</Text>
+                  </View>
+
+                  <View style={{ marginBottom: 20 }}>
+                     <Text style={{ color: theme.colors.textMain, fontSize: 13, fontWeight: '800', marginBottom: 6 }}>O QUE EVITAR</Text>
+                     <Text style={{ color: theme.colors.textSecondary, fontSize: 15, lineHeight: 22 }}>{planState?.activeExercise?.whatToAvoid || 'Evite acelerações bruscas, movimentos oscilantes no tronco e não quebre a linha de tensão muscular no momento de relaxamento.'}</Text>
+                  </View>
+                  
+                  <View style={{ backgroundColor: theme.colors.surfaceLow, padding: 16, borderRadius: 12, marginBottom: 24 }}>
+                     <Text style={{ color: theme.colors.primary, fontSize: 11, fontWeight: '800', marginBottom: 4, letterSpacing: 1 }}>LOCALIZAÇÃO DO SENSOR/TELEMÓVEL:</Text>
+                     <Text style={{ color: theme.colors.textMain, fontSize: 13, fontWeight: '600' }}>{planState?.activeExercise?.phonePlacementText || 'No eixo anatómico dominante do movimento (normalmente utilizando fita desportiva de braço ou perna principal).'}</Text>
+                  </View>
+
+                  <TouchableOpacity
+                     onPress={() => setIsInstructionsVisible(false)}
+                     style={{ alignSelf: 'stretch', backgroundColor: theme.colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: 'center' }}
+                  >
+                     <Text style={{ color: theme.colors.pageBg, fontSize: 14, fontWeight: '900', letterSpacing: 1 }}>COMPREENDIDO</Text>
+                  </TouchableOpacity>
+               </View>
+            </View>
+         )}
 
          {/* Popup de Informação: Modo de Precisão */}
          {isInfoVisible && (

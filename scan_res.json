@@ -1,0 +1,311 @@
+[
+  {
+    "file": "src\\analytics\\events.ts"
+  },
+  {
+    "file": "src\\config\\effortConfig.ts"
+  },
+  {
+    "file": "src\\config\\exerciseDictionary.ts"
+  },
+  {
+    "file": "src\\config\\motionExerciseMuscleDictionary.ts"
+  },
+  {
+    "file": "src\\contracts\\hostRuntimeContract.ts"
+  },
+  {
+    "file": "src\\contracts\\metricsModels.ts"
+  },
+  {
+    "file": "src\\contracts\\muscleTypes.ts"
+  },
+  {
+    "file": "src\\contracts\\planCoreDefinitions.ts"
+  },
+  {
+    "file": "src\\contracts\\planMVP.ts"
+  },
+  {
+    "file": "src\\contracts\\trainingPlanTypes.ts"
+  },
+  {
+    "file": "src\\contracts\\types.ts"
+  },
+  {
+    "file": "src\\data\\exerciseCatalog.ts"
+  },
+  {
+    "file": "src\\data\\seedPlans.ts"
+  },
+  {
+    "file": "src\\domain\\motionProfileBuilder.ts"
+  },
+  {
+    "file": "src\\engines\\phaseEngine.ts"
+  },
+  {
+    "file": "src\\engines\\planEngine.ts"
+  },
+  {
+    "file": "src\\engines\\repQualityEngine.ts"
+  },
+  {
+    "file": "src\\engines\\universeEngine.ts"
+  },
+  {
+    "file": "src\\facades\\useMotionExecutionFacade.ts"
+  },
+  {
+    "file": "src\\facades\\useMotionExecutionRuntimeFacade.ts"
+  },
+  {
+    "file": "src\\facades\\useMotionHostFeedbackFacade.ts"
+  },
+  {
+    "file": "src\\facades\\useMotionKinematicsFacade.ts"
+  },
+  {
+    "file": "src\\facades\\useMotionMetricsFacade.ts"
+  },
+  {
+    "file": "src\\facades\\useMotionPlanState.ts"
+  },
+  {
+    "file": "src\\facades\\useMotionSignalFacade.ts"
+  },
+  {
+    "file": "src\\facades\\useMotionSyncFacade.ts"
+  },
+  {
+    "file": "src\\facades\\useMotionTimelineFacade.ts"
+  },
+  {
+    "file": "src\\facades\\useMotionTrainingFacade.ts"
+  },
+  {
+    "file": "src\\features\\components\\MotionBanners.tsx"
+  },
+  {
+    "file": "src\\features\\components\\MotionBodyViewer3D.tsx"
+  },
+  {
+    "file": "src\\features\\components\\MotionBottomNav.tsx"
+  },
+  {
+    "file": "src\\features\\components\\MotionMetricsViews.tsx"
+  },
+  {
+    "file": "src\\features\\components\\MotionTimelineAnalyticsViews.tsx"
+  },
+  {
+    "file": "src\\features\\components\\MotionUI.tsx"
+  },
+  {
+    "file": "src\\features\\components\\SensorDebugPanel.tsx"
+  },
+  {
+    "file": "src\\features\\screens\\home\\MotionHomeBalance.tsx"
+  },
+  {
+    "file": "src\\features\\screens\\home\\MotionHomeMomentum.tsx"
+  },
+  {
+    "file": "src\\features\\screens\\home\\MotionHomePerformance.tsx"
+  },
+  {
+    "file": "src\\features\\screens\\home\\MotionPlanScreen.tsx"
+  },
+  {
+    "file": "src\\features\\screens\\MotionContext.tsx"
+  },
+  {
+    "file": "src\\features\\screens\\MotionHome.tsx"
+  },
+  {
+    "file": "src\\features\\screens\\MotionNeutralEntry.tsx"
+  },
+  {
+    "file": "src\\features\\screens\\MotionPlan.tsx"
+  },
+  {
+    "file": "src\\features\\screens\\MotionProfile.tsx"
+  },
+  {
+    "file": "src\\features\\screens\\MotionProgress.tsx"
+  },
+  {
+    "file": "src\\features\\screens\\MotionRoot.tsx"
+  },
+  {
+    "file": "src\\features\\screens\\MotionSession.tsx"
+  },
+  {
+    "file": "src\\features\\screens\\MotionSetup.tsx"
+  },
+  {
+    "file": "src\\features\\screens\\session\\MotionSessionPerformance.tsx"
+  },
+  {
+    "file": "src\\features\\screens\\viewModels\\useMotionHomeViewModel.ts"
+  },
+  {
+    "file": "src\\features\\screens\\viewModels\\useMotionProfileViewModel.ts"
+  },
+  {
+    "file": "src\\features\\screens\\viewModels\\useMotionSessionViewModel.ts"
+  },
+  {
+    "file": "src\\index.tsx"
+  },
+  {
+    "file": "src\\integration\\hostBridge.ts"
+  },
+  {
+    "file": "src\\integration\\motionHostContextAdapter.ts"
+  },
+  {
+    "file": "src\\integration\\motionHostFeedbackAdapter.ts"
+  },
+  {
+    "file": "src\\integration\\motionHostIntegrationFacade.ts"
+  },
+  {
+    "file": "src\\integration\\motionHostValidationHarness.ts"
+  },
+  {
+    "file": "src\\integration\\motionHostWritebackAdapter.ts"
+  },
+  {
+    "file": "src\\integration\\shellContextAdapter.ts"
+  },
+  {
+    "file": "src\\presenters\\motionMetricsPresenter.ts"
+  },
+  {
+    "file": "src\\presenters\\motionTrainingPresenter.ts"
+  },
+  {
+    "file": "src\\presenters\\timelinePresenter.ts"
+  },
+  {
+    "file": "src\\resolvers\\activeAnalysisResolver.ts"
+  },
+  {
+    "file": "src\\resolvers\\demoContextResolver.ts"
+  },
+  {
+    "file": "src\\resolvers\\exercisePlacementResolver.ts"
+  },
+  {
+    "file": "src\\resolvers\\historyContextResolver.ts"
+  },
+  {
+    "file": "src\\resolvers\\permissionsResolver.ts"
+  },
+  {
+    "file": "src\\services\\analyticsService.ts"
+  },
+  {
+    "file": "src\\services\\contributionMapper.ts"
+  },
+  {
+    "file": "src\\services\\motionBodyMap3DService.ts"
+  },
+  {
+    "file": "src\\services\\motionBodyMapLightingService.ts"
+  },
+  {
+    "file": "src\\services\\motionBodyMapService.ts"
+  },
+  {
+    "file": "src\\services\\motionDailyReadinessResolver.ts"
+  },
+  {
+    "file": "src\\services\\motionGoalResolver.ts"
+  },
+  {
+    "file": "src\\services\\motionGuidanceService.ts"
+  },
+  {
+    "file": "src\\services\\motionHostFeedbackAdapter.ts"
+  },
+  {
+    "file": "src\\services\\motionHostFeedbackService.ts"
+  },
+  {
+    "file": "src\\services\\motionMetricsAggregationService.ts"
+  },
+  {
+    "file": "src\\services\\motionMuscleAggregationService.ts"
+  },
+  {
+    "file": "src\\services\\motionOperationalGoalsService.ts"
+  },
+  {
+    "file": "src\\services\\motionOutOfPlanResolver.ts"
+  },
+  {
+    "file": "src\\services\\motionPlanAdaptationService.ts"
+  },
+  {
+    "file": "src\\services\\motionPlanEngine.ts"
+  },
+  {
+    "file": "src\\services\\motionProfileBuilder.ts"
+  },
+  {
+    "file": "src\\services\\motionRetryQueueService.ts"
+  },
+  {
+    "file": "src\\services\\motionSessionComposer.ts"
+  },
+  {
+    "file": "src\\services\\motionSignalCapabilities.ts"
+  },
+  {
+    "file": "src\\services\\motionSyncPolicy.ts"
+  },
+  {
+    "file": "src\\services\\motionSyncReconciler.ts"
+  },
+  {
+    "file": "src\\services\\motionTimelineAnalyticsService.ts"
+  },
+  {
+    "file": "src\\services\\motionTrainingWellnessRelationService.ts"
+  },
+  {
+    "file": "src\\services\\motionUserTrainingProfileBuilder.ts"
+  },
+  {
+    "file": "src\\services\\motionWakeLockService.ts"
+  },
+  {
+    "file": "src\\services\\readinessService.ts"
+  },
+  {
+    "file": "src\\services\\workoutContributionMapper.ts"
+  },
+  {
+    "file": "src\\services\\workoutInferenceService.ts"
+  },
+  {
+    "file": "src\\services\\writebackService.ts"
+  },
+  {
+    "file": "src\\services\\__tests__\\motionSessionComposer.test.ts"
+  },
+  {
+    "file": "src\\store\\integrationSlice.ts"
+  },
+  {
+    "file": "src\\store\\motionStoreShape.ts"
+  },
+  {
+    "file": "src\\store\\useMotionStore.ts"
+  },
+  {
+    "file": "src\\theme\\useMotionTheme.ts"
+  }
+]

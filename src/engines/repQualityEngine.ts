@@ -47,6 +47,7 @@ export interface QualityEngineState {
   repProgress: number;         // 0..1 — progresso dentro da rep
   visualGaugeProgress: number; // 0..100 — controla anel
   executionQualityScore: number; // 0..1 — score técnico
+  liveAmplitude: number;       // RC1.8.1 — For live real-time debug inspection
   repCount: number;            // APENAS reps com movimento físico real validado
   celebrationTrigger: boolean;
   referenceROM: number | null; // calibrado na 1ª rep válida
@@ -92,22 +93,21 @@ const MIN_ACCEPTED_AMPLITUDE = 1.5;   // m/s² (reduzido de 2.5; range de Y é d
 const MIN_QUALITY_FOR_COUNT = 0.30;
 
 // Duração mínima de uma fase para ser válida (ms)
-const MIN_PHASE_DURATION_MS = 300;    // reduzido de 350 para reps mais naturais
+const MIN_PHASE_DURATION_MS = 120; // Reduzido drasticamente para repetições dinâmicas e explosivas
 
 // Duração máxima de uma fase — após este tempo, RESET para idle
 const MAX_PHASE_DURATION_MS = 7000;
 
 // Tempo mínimo em idle antes de permitir nova entrada por coerência direcional.
-const IDLE_REARM_MS = 600;
+const IDLE_REARM_MS = 400;
 
-// Requisitos de Pose de Prontidão (Ready-Pose) — RC1.7
-const READY_POSE_STABILITY_MS = 600; // Estabilidade necessária antes de armar
-const READY_ORIENTATION_LIMIT = 5.0; // Desvio máximo lateral (X/Z) para ser considerado supino
-const POSTURE_SHIFT_LIMIT     = 6.5; // Limite de desvio global que anula a rep
+// Requisitos de Pose de Prontidão (Ready-Pose) — RC1.8
+const READY_POSE_STABILITY_MS = 400; // Estabilidade mais rápida para não falhar 1ª rep
+const READY_ORIENTATION_LIMIT = 5.0; // Desvio máximo
+const POSTURE_SHIFT_LIMIT     = 3.0; // Limite lateral severamente reduzido (antes 6.5) para bloquear lateral
 
-
-// Cadência ótima por fase (ms): entre 600ms e 3500ms (ligeiramente mais tolerante)
-const CADENCE_MIN_MS = 600;
+// Cadência ótima por fase (ms)
+const CADENCE_MIN_MS = 180; // Tolerância máxima para o fluxo natural/rápido de um ginásio
 const CADENCE_MAX_MS = 3500;
 
 // Limiar de ruído lateral (std dev de X/Z normalizado)
@@ -203,6 +203,7 @@ export class RepPhaseDetector {
     this.peakDelta      = 0;
     this.smoothYMin     =  Infinity;
     this.smoothYMax     = -Infinity;
+    this.maxDirectionRun = 0;
     this.directionCount = 0;
     this.directionSign  = 0;
     // RC1.5/RC1.6: reseta as médias
@@ -223,7 +224,19 @@ export class RepPhaseDetector {
   } | null {
     const mag   = magnitude(sample.x, sample.y, sample.z);
     const delta = Math.abs(mag - GRAVITY);
+    const oldSmoothY = this.smoothY;
     this.smoothY = this.smoothY * (1 - this.alpha) + sample.y * this.alpha;
+
+    // RC1.7.5: Lógica de direção para detetar chatter
+    const diff = this.smoothY - oldSmoothY;
+    const isSameDir = Math.sign(diff) === this.directionSign && Math.abs(diff) > 0.05;
+    if (isSameDir) {
+      this.directionCount += 1;
+    } else {
+      this.directionSign  = Math.sign(diff);
+      this.directionCount = 1;
+    }
+    this.maxDirectionRun = Math.max(this.maxDirectionRun, this.directionCount);
 
     this.phaseBuffer.push(sample);
     if (this.phaseBuffer.length > 80) this.phaseBuffer.shift();
@@ -254,9 +267,14 @@ export class RepPhaseDetector {
           }
         } else {
           this.readyPoseStartTime = 0;
-          this.isArmed = false;
-          if (!isCorrectOrientation) this.rejectionReason = 'not_ready_pose';
-          else if (!isStable) this.rejectionReason = 'wait_stability';
+          // RC1.8.1: NUNCA resetar a flag isArmed por simples oscilações menores.
+          // Se o utilizador já armou o motor para a atividade, não perde o arming.
+          if (!isCorrectOrientation) {
+             this.rejectionReason = 'not_ready_pose';
+             this.isArmed = false; // Só reseta se cometer falha lateral severa (ex: levantar-se)
+          } else if (!isStable && !this.isArmed) {
+             this.rejectionReason = 'wait_stability';
+          }
         }
 
         // EMA Baseline
@@ -287,6 +305,7 @@ export class RepPhaseDetector {
           newPhase = 'eccen';
           this.directionCount = 0;
           this.directionSign  = 0;
+          this.maxDirectionRun = 0;
           this.smoothYMin = this.smoothY;
           this.smoothYMax = this.smoothY;
           this.peakDelta  = delta;
@@ -359,6 +378,14 @@ export class RepPhaseDetector {
           const amp          = Math.max(this.peakDelta, smoothYRange);
 
           if (amp >= MIN_ACCEPTED_AMPLITUDE) {
+            // RC1.8: Rejeição estrita por caos/chatter
+            const lNoise = lateralNoise(this.phaseBuffer);
+            if (this.maxDirectionRun < 8 || lNoise > 0.35) {
+              this.rejectionReason = lNoise > 0.35 ? 'chaotic_shake' : 'phase_chatter_shake';
+              this.reset();
+              break;
+            }
+
             // Rep física real aceite
             const samples   = [...this.phaseBuffer];
             const timings   = { ...this.phaseTimings };
@@ -376,6 +403,7 @@ export class RepPhaseDetector {
             this.idleBaselineY  = NaN;
             this.directionCount = 0;
             this.directionSign  = 0;
+            this.maxDirectionRun = 0;
             this.peakDelta      = 0;
             this.smoothYMin     =  Infinity;
             this.smoothYMax     = -Infinity;
@@ -470,15 +498,21 @@ export class ExecutionQualityScorer {
       baseScore += 0.18;
     }
 
-    // ── 2. CADÊNCIA POR FASE ───────────────────────────────────────────────
+    // ── 2. CADÊNCIA POR FASE (ANTI-CAOS AGRESSIVO) ──────────────────────
     const eccenMs  = phaseTimings['eccen']  ?? 0;
     const concenMs = phaseTimings['concen'] ?? 0;
+    
+    // RC1.8.1: Se for incrivelmente rápido (< 180ms por fase), é vibração/caos impossível de ser humano. Zero.
+    if (eccenMs < 180 && concenMs < 180) {
+       return { executionQualityScore: 0, phaseTimings, amplitudeRatio: 0, cadenceOk: false, noiseLevel: 1, completed: false };
+    }
+
     const eccenOk  = eccenMs  >= CADENCE_MIN_MS && eccenMs  <= CADENCE_MAX_MS;
     const concenOk = concenMs >= CADENCE_MIN_MS && concenMs <= CADENCE_MAX_MS;
     const cadenceOk = eccenOk && concenOk;
 
     if (!cadenceOk) {
-      if (eccenMs < CADENCE_MIN_MS / 2 || concenMs < CADENCE_MIN_MS / 2) {
+      if (eccenMs < CADENCE_MIN_MS / 1.5 || concenMs < CADENCE_MIN_MS / 1.5) {
         baseScore -= 0.25;
         visualCap = Math.min(visualCap, CAP_CHAOTIC_CADENCE);
       } else {
@@ -580,6 +614,7 @@ export class RepQualityEngine {
     repProgress: 0,
     visualGaugeProgress: 0,
     executionQualityScore: 0,
+    liveAmplitude: 0,
     repCount: 0,
     celebrationTrigger: false,
     referenceROM: null,
@@ -600,6 +635,7 @@ export class RepQualityEngine {
       const { newPhase, phaseTimings, amplitudeDelta, repCompleted, phaseSamples, rejectionReason } = result;
       this.state.currentPhase = newPhase;
       this.state.rejectionReason = rejectionReason;
+      this.state.liveAmplitude = amplitudeDelta;
 
       if (repCompleted) {
         this.scorer.calibrateIfValid(amplitudeDelta);
@@ -615,12 +651,18 @@ export class RepQualityEngine {
 
         if (isRealMovement && passesQualityGate) {
           this.lastQualityScore = repResult.executionQualityScore;
+
+          // RC1.8: Repitação imediatamente aceite após validação do ciclo
           this.state.repCount += 1;
 
           if (repResult.executionQualityScore >= CELEBRATION_THRESHOLD) {
             this.state.celebrationTrigger = true;
             this.celebrationTs = sample.timestamp;
           }
+        } else {
+          // Expor motivo de rejeição por ciclo inútil
+          if (!isRealMovement) this.state.rejectionReason = 'amplitude_too_low';
+          else if (!passesQualityGate) this.state.rejectionReason = 'low_quality_execution';
         }
       }
     }
@@ -656,6 +698,7 @@ export class RepQualityEngine {
       repProgress: 0,
       visualGaugeProgress: 0,
       executionQualityScore: 0,
+      liveAmplitude: 0,
       repCount: 0,
       celebrationTrigger: false,
       referenceROM: null,

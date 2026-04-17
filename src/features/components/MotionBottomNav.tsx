@@ -13,9 +13,9 @@ export const MotionBottomNav: React.FC<MotionBottomNavProps> = ({ activeTab, onT
 
   return (
     <View style={[styles.dockBar, { backgroundColor: theme.colors.pageBg, borderTopColor: theme.colors.outline }]}>
-      <TouchableOpacity style={styles.dockItem}>
-        <ClipboardList size={28} color={theme.colors.textSecondary} />
-        <Text style={[styles.dockText, { color: theme.colors.textSecondary }]}>Plano</Text>
+      <TouchableOpacity style={styles.dockItem} onPress={() => onTabPress('Plano')}>
+        <ClipboardList size={28} color={activeTab === 'Plano' ? theme.colors.primary : theme.colors.textSecondary} />
+        <Text style={[styles.dockText, { color: activeTab === 'Plano' ? theme.colors.primary : theme.colors.textSecondary, fontWeight: activeTab === 'Plano' ? '800' : 'normal' }]}>Plano</Text>
       </TouchableOpacity>
       <TouchableOpacity style={styles.dockItem} onPress={() => onTabPress('Config')}>
         <Settings size={28} color={activeTab === 'Config' ? theme.colors.primary : theme.colors.textSecondary} />
