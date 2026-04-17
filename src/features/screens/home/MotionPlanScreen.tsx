@@ -7,36 +7,13 @@ import { CheckCircle2, ChevronRight, Play, Compass, Calendar, Zap, LayoutList } 
 export const MotionPlanScreen: React.FC<{ planState: any, onNavigateToTraining: () => void }> = ({ planState, onNavigateToTraining }) => {
   const theme = useMotionTheme();
 
-  // Tarefa 2 - Prova de Camadas Defensiva
-  const SCREEN_STATUS = 'SCREEN_OK';
-  const HOOK_STATUS = planState ? 'HOOK_OK' : 'HOOK_FAIL';
-  const STRATEGY_STATUS = planState?.activeStrategy ? 'STRATEGY_OK' : 'STRATEGY_FAIL';
-  const SESSION_STATUS = planState?.activeSession ? 'SESSION_OK' : 'SESSION_FAIL';
-
-  // HUD INEGÁVEL - Tarefa 1
-  const renderDiagnosticHUD = () => (
-     <View style={{ position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: '#000000', padding: 24, zIndex: 99999, alignItems: 'center', elevation: 100 }}>
-         <Text style={{ fontSize: 32, fontWeight: '900', color: '#ffea00', letterSpacing: 2 }}>PLANO MONTADO</Text>
-         <Text style={{ fontFamily: 'monospace', fontWeight: 'bold', color: '#ffffff', marginTop: 12 }}>{SCREEN_STATUS}</Text>
-         <Text style={{ fontFamily: 'monospace', fontWeight: 'bold', color: '#ffffff' }}>{HOOK_STATUS}</Text>
-         <Text style={{ fontFamily: 'monospace', fontWeight: 'bold', color: '#ffffff' }}>{STRATEGY_STATUS}</Text>
-         <Text style={{ fontFamily: 'monospace', fontWeight: 'bold', color: '#ffffff' }}>{SESSION_STATUS}</Text>
-     </View>
-  );
-
   if (!planState || !planState.isLoaded) return (
-       <View style={{ flex: 1, backgroundColor: '#ffffff' }}>
-           {renderDiagnosticHUD()}
+       <View style={{ flex: 1, backgroundColor: theme.colors.pageBg }}>
        </View>
   );
 
   return (
     <View style={styles.container}>
-      {renderDiagnosticHUD()}
-      
-      {/* Spacer para garantir que o HUD absoluto não tapa o conteúdo principal */}
-      <View style={{ height: 160 }} />
-
       <Text style={[styles.header, { color: theme.colors.textMain }]}>PLANEAMENTO</Text>
       
       {/* HUD de Diagnóstico do Estado de Recuperação (Apenas em Dev) */}
